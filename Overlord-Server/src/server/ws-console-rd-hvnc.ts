@@ -42,7 +42,13 @@ function safeSendViewerFrame(ws: ServerWebSocket<SocketData>, bytes: Uint8Array,
     meta[3] = 1;
     meta[4] = (header?.monitor ?? 0) & 0xff;
     meta[5] = (header?.fps ?? 0) & 0xff;
-    const fmt = header?.format === "blocks" ? 2 : header?.format === "blocks_raw" ? 3 : 1;
+    const fmt = header?.format === "blocks"
+      ? 2
+      : header?.format === "blocks_raw"
+      ? 3
+      : header?.format === "h264"
+      ? 4
+      : 1;
     meta[6] = fmt;
     meta[7] = 0;
 
@@ -59,7 +65,13 @@ function safeSendViewerFrame(ws: ServerWebSocket<SocketData>, bytes: Uint8Array,
 }
 
 const rdSendStats = { lastLog: 0, frames: 0, sendMs: 0, bytes: 0 };
-export const rdStreamingState = new Map<string, { isStreaming: boolean; display: number; quality: number; duplication: boolean }>();
+export const rdStreamingState = new Map<string, {
+  isStreaming: boolean;
+  display: number;
+  quality: number;
+  codec: string;
+  duplication: boolean;
+}>();
 const rdInputPending = new Map<string, { clientId: string; sentAt: number; kind: string }>();
 const RD_INPUT_TTL_MS = 10_000;
 
@@ -208,7 +220,7 @@ export function handleRemoteDesktopViewerMessage(ws: ServerWebSocket<SocketData>
     return;
   }
 
-  const state = rdStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90, duplication: false };
+  const state = rdStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90, codec: "", duplication: false };
 
   logger.debug(`[rd] inbound viewer msg type=${payload.type} client=${clientId}`);
   switch (payload.type) {
@@ -247,11 +259,13 @@ export function handleRemoteDesktopViewerMessage(ws: ServerWebSocket<SocketData>
     }
     case "desktop_set_quality": {
       const newQuality = Number(payload.quality) || 90;
-      if (state.quality !== newQuality) {
-        sendDesktopCommand(target, "desktop_set_quality", { quality: newQuality, codec: payload.codec || "" });
+      const newCodec = String(payload.codec || "").toLowerCase();
+      if (state.quality !== newQuality || state.codec !== newCodec) {
+        sendDesktopCommand(target, "desktop_set_quality", { quality: newQuality, codec: newCodec });
         state.quality = newQuality;
+        state.codec = newCodec;
         rdStreamingState.set(clientId, state);
-        logger.debug(`[rd] set quality to ${newQuality}`);
+        logger.debug(`[rd] set quality=${newQuality} codec=${newCodec || "(default)"}`);
       }
       break;
     }
@@ -328,7 +342,7 @@ function handleRemoteDesktopFrame(payload: any) {
   const header = payload.header;
   const bytes = payload.data as Uint8Array;
   const t0 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-  const state = rdStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90, duplication: false };
+  const state = rdStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90, codec: "", duplication: false };
   if (!state.isStreaming) {
     rdStreamingState.set(clientId, { ...state, isStreaming: true });
   }
@@ -359,7 +373,7 @@ function handleRemoteDesktopFrame(payload: any) {
   return sent;
 };
 
-export const hvncStreamingState = new Map<string, { isStreaming: boolean; display: number; quality: number }>();
+export const hvncStreamingState = new Map<string, { isStreaming: boolean; display: number; quality: number; codec: string }>();
 
 export function handleHVNCViewerOpen(ws: ServerWebSocket<SocketData>) {
   const { clientId } = ws.data;
@@ -398,7 +412,7 @@ export function handleHVNCViewerMessage(ws: ServerWebSocket<SocketData>, raw: st
     return;
   }
 
-  const state = hvncStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90 };
+  const state = hvncStreamingState.get(clientId) || { isStreaming: false, display: 0, quality: 90, codec: "" };
 
   logger.debug(`[hvnc] inbound viewer msg type=${payload.type} client=${clientId}`);
   switch (payload.type) {
@@ -434,11 +448,13 @@ export function handleHVNCViewerMessage(ws: ServerWebSocket<SocketData>, raw: st
     }
     case "hvnc_set_quality": {
       const newQuality = Number(payload.quality) || 90;
-      if (state.quality !== newQuality) {
-        sendHVNCCommand(target, "hvnc_set_quality", { quality: newQuality, codec: payload.codec || "" });
+      const newCodec = String(payload.codec || "").toLowerCase();
+      if (state.quality !== newQuality || state.codec !== newCodec) {
+        sendHVNCCommand(target, "hvnc_set_quality", { quality: newQuality, codec: newCodec });
         state.quality = newQuality;
+        state.codec = newCodec;
         hvncStreamingState.set(clientId, state);
-        logger.debug(`[hvnc] set quality to ${newQuality}`);
+        logger.debug(`[hvnc] set quality=${newQuality} codec=${newCodec || "(default)"}`);
       }
       break;
     }

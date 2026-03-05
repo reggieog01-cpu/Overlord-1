@@ -27,8 +27,12 @@ func GetPersistedDisplay() int {
 }
 
 func DesktopStart(ctx context.Context, env *rt.Env) error {
-	interval, fps := streamInterval("OVERLORD_DESKTOP_MAX_FPS", 60)
-	log.Printf("desktop: starting stream (max fps %d)", fps)
+	interval, fps := streamInterval("OVERLORD_DESKTOP_MAX_FPS", 120)
+	if fps < 60 {
+		fps = 60
+		interval = time.Second / time.Duration(fps)
+	}
+	log.Printf("desktop: starting stream (target fps %d)", fps)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {

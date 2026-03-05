@@ -22,6 +22,7 @@ import (
 
 func Loop(ctx context.Context, env *rt.Env) {
 	defer recoverAndLog("capture loop", env.Cancel)
+	logCodecSupport()
 
 	if env.Cfg.DisableCapture {
 		log.Printf("capture: disabled by config, sending black placeholder")
@@ -288,6 +289,8 @@ var (
 
 	overrideQuality atomic.Int64
 	overrideCodec   atomic.Value
+	h264WarnOnce    sync.Once
+	codecLogOnce    sync.Once
 
 	prevMu    sync.Mutex
 	prevFrame *prevImage
@@ -297,6 +300,16 @@ type prevImage struct {
 	w   int
 	h   int
 	pix []byte
+}
+
+func logCodecSupport() {
+	codecLogOnce.Do(func() {
+		if h264Available() {
+			log.Printf("capture: codec support h264=enabled jpeg=enabled")
+			return
+		}
+		log.Printf("capture: codec support h264=disabled (cgo off), jpeg=enabled")
+	})
 }
 
 func frameFPS(now time.Time) int {
@@ -357,6 +370,7 @@ func ResetPrev() {
 	prevMu.Unlock()
 	lastKeyframe.Store(0)
 	requestFullFrames(2)
+	resetH264Encoder()
 }
 
 func jpegQuality() int {
@@ -451,6 +465,22 @@ func buildFrame(img *image.RGBA, display int, quality int) (wire.Frame, time.Dur
 	now := time.Now()
 	codec := blockCodec()
 
+	if codec == "h264" {
+		h264Bytes, err := encodeH264Frame(img)
+		if err == nil && len(h264Bytes) > 0 {
+			prevMu.Lock()
+			copyPrev(img)
+			prevMu.Unlock()
+			lastKeyframe.Store(now.UnixNano())
+			statFullFrames.Add(1)
+			return wire.Frame{Type: "frame", Header: wire.FrameHeader{Monitor: display, FPS: 0, Format: "h264"}, Data: h264Bytes}, time.Since(encStart), nil
+		}
+		h264WarnOnce.Do(func() {
+			log.Printf("capture: h264 encode unavailable, falling back to jpeg: %v", err)
+		})
+		codec = "jpeg"
+	}
+
 	if !enableBlocks {
 		jpegBytes, err := encodeJPEG(img, quality)
 		prevMu.Lock()
@@ -494,10 +524,8 @@ func buildFrame(img *image.RGBA, display int, quality int) (wire.Frame, time.Dur
 	}
 
 	if blocks == 0 {
-
-		prevMu.Lock()
-		copyPrev(img)
-		prevMu.Unlock()
+		// Keepalive frames indicate no block-level changes, so avoid copying the
+		// full RGBA buffer into prevFrame again.
 		statKeepaliveFrames.Add(1)
 		return wire.Frame{Type: "frame", Header: wire.FrameHeader{Monitor: display, FPS: 0, Format: "blocks"}, Data: blockPayload}, encDur, nil
 	}
@@ -555,9 +583,8 @@ func buildFrameHVNC(img *image.RGBA, display int, quality int) (wire.Frame, time
 	}
 
 	if blocks == 0 {
-		prevMu.Lock()
-		copyPrev(img)
-		prevMu.Unlock()
+		// Keepalive frames indicate no block-level changes, so avoid copying the
+		// full RGBA buffer into prevFrame again.
 		statKeepaliveFrames.Add(1)
 		frame := wire.Frame{Type: "frame", Header: wire.FrameHeader{Monitor: display, FPS: 0, Format: "blocks", HVNC: true}, Data: blockPayload}
 		return frame, encDur, nil
@@ -1125,6 +1152,8 @@ func blockCodec() string {
 	blockCodecOnce.Do(func() {
 		codec := strings.ToLower(os.Getenv(blockCodecEnv))
 		switch codec {
+		case "h264":
+			cachedBlockCodec = "h264"
 		case "raw", "rgba":
 			cachedBlockCodec = "raw"
 		case "jpeg", "":
@@ -1144,13 +1173,22 @@ func SetQualityAndCodec(quality int, codec string) {
 		overrideQuality.Store(int64(quality))
 	}
 	s := strings.ToLower(strings.TrimSpace(codec))
+	if s == "h264" && !h264Available() {
+		log.Printf("capture: requested codec=h264 but unavailable; forcing codec=jpeg")
+		s = "jpeg"
+	}
 	switch s {
-	case "raw", "rgba", "jpeg":
+	case "raw", "rgba", "jpeg", "h264":
 		overrideCodec.Store(s)
+		h264WarnOnce = sync.Once{}
+		if s != "h264" {
+			resetH264Encoder()
+		}
 	case "":
 
 	default:
 		overrideCodec.Store("jpeg")
+		resetH264Encoder()
 	}
 }
 

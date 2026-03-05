@@ -100,7 +100,7 @@ export type ScreenshotResult = {
 export type FrameHeader = {
   monitor: number;
   fps: number;
-  format: "jpeg" | "webp" | "raw";
+  format: "jpeg" | "webp" | "raw" | "h264";
   hash?: string;
   hvnc?: boolean;
 };

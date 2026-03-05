@@ -21,8 +21,8 @@ func streamInterval(envVar string, defFPS int) (time.Duration, int) {
 	if fps < 1 {
 		fps = 1
 	}
-	if fps > 120 {
-		fps = 120
+	if fps > 1000 {
+		fps = 1000
 	}
 	return time.Second / time.Duration(fps), fps
 }
