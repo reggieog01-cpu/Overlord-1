@@ -64,10 +64,18 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
   let h264LowFpsStreak = 0;
   let h264FirstFrameAt = 0;
   let h264FramesSeen = 0;
+  let h264KeyframeErrorStreak = 0;
+  let h264RecoveryAttempts = 0;
+  let h264LastRecoveryAt = 0;
+  let h264LastDecodeWarnAt = 0;
   const H264_LOW_FPS_THRESHOLD = 6;
   const H264_FALLBACK_WARMUP_MS = 10000;
   const H264_MIN_FRAMES_BEFORE_FALLBACK = 120;
   const H264_LOW_FPS_STREAK_LIMIT = 120;
+  const H264_KEYFRAME_ERROR_RESTART_THRESHOLD = 24;
+  const H264_MAX_RECOVERY_ATTEMPTS = 1;
+  const H264_RECOVERY_COOLDOWN_MS = 5000;
+  const H264_DECODE_WARN_THROTTLE_MS = 2000;
   const mouseMoveIntervalMs = 33;
   const inputBackpressureBytes = 256 * 1024;
   let lastMoveSentAt = 0;
@@ -77,6 +85,14 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     h264LowFpsStreak = 0;
     h264FirstFrameAt = 0;
     h264FramesSeen = 0;
+    h264KeyframeErrorStreak = 0;
+  }
+
+  function resetH264SessionState() {
+    resetH264RuntimeState();
+    h264RecoveryAttempts = 0;
+    h264LastRecoveryAt = 0;
+    h264LastDecodeWarnAt = 0;
   }
 
   const storedCodecPref = localStorage.getItem(codecPrefKey);
@@ -322,6 +338,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
 
   if (codecH264) {
     codecH264.addEventListener("change", function () {
+      resetH264SessionState();
       prefersH264 = !!codecH264.checked && typeof VideoDecoder === "function";
       localStorage.setItem(codecPrefKey, prefersH264 ? "1" : "0");
       if (!prefersH264) {
@@ -352,6 +369,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     }
     desiredStreaming = true;
     lastFrameAt = 0;
+    resetH264SessionState();
     setStreamState("starting", "Starting stream");
     sendCmd("desktop_start", {});
   });
@@ -540,6 +558,65 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     }
   }
 
+  function tryRecoverH264Stream(reason = "h264_decode_error") {
+    if (selectedCodec !== "h264") return false;
+    if (!isStreaming || !currentClientId || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    const now = Date.now();
+    if (h264RecoveryAttempts >= H264_MAX_RECOVERY_ATTEMPTS) return false;
+    if (now - h264LastRecoveryAt < H264_RECOVERY_COOLDOWN_MS) return false;
+
+    h264RecoveryAttempts += 1;
+    h264LastRecoveryAt = now;
+    h264KeyframeErrorStreak = 0;
+
+    log("warn", "H264 decode stuck waiting for keyframe. Auto-restarting stream once.", {
+      reason,
+      attempt: h264RecoveryAttempts
+    });
+
+    try {
+      ws.send(JSON.stringify({
+        type: "desktop_stop",
+        clientId: currentClientId,
+        mode: "rdp",
+        quality: "high",
+        codec: "h264",
+        source: "rd_viewer",
+        reason: "h264_recovery_stop"
+      }));
+    } catch {}
+
+    setTimeout(() => {
+      if (!isStreaming || selectedCodec !== "h264" || !currentClientId || !ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      resetH264RuntimeState();
+      try {
+        ws.send(JSON.stringify({
+          type: "desktop_start",
+          clientId: currentClientId,
+          mode: "rdp",
+          quality: "high",
+          codec: "h264",
+          source: "rd_viewer",
+          reason: "h264_recovery_restart"
+        }));
+      } catch {}
+      try {
+        ws.send(JSON.stringify({
+          type: "desktop_set_quality",
+          clientId: currentClientId,
+          quality: "high",
+          codec: "h264",
+          source: "rd_viewer",
+          reason: "h264_recovery_quality_push"
+        }));
+      } catch {}
+    }, 450);
+
+    return true;
+  }
+
   function isKeyframeRequiredError(reason) {
     const text = normalizeFallbackReason(reason).toLowerCase();
     return text.includes("key frame is required") || text.includes("keyframe is required");
@@ -719,13 +796,28 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
       h264TimestampUs += frameIntervalUs;
       try {
         videoDecoder.decode(chunk);
+        h264KeyframeErrorStreak = 0;
         updateFpsDisplay(fps);
       } catch (err) {
-        console.warn("rd: h264 decode failed", err);
         if (isKeyframeRequiredError(err)) {
-          // Startup can begin with delta frames; ignore until a keyframe lands.
+          h264KeyframeErrorStreak += 1;
+          const now = Date.now();
+          if (now - h264LastDecodeWarnAt >= H264_DECODE_WARN_THROTTLE_MS) {
+            h264LastDecodeWarnAt = now;
+            console.warn("rd: h264 decode waiting for keyframe", {
+              streak: h264KeyframeErrorStreak,
+              recoveries: h264RecoveryAttempts,
+            });
+          }
+          if (h264KeyframeErrorStreak >= H264_KEYFRAME_ERROR_RESTART_THRESHOLD) {
+            const restarted = tryRecoverH264Stream("h264_keyframe_required");
+            if (!restarted) {
+              fallbackToJpegCodec("h264_keyframe_required_loop");
+            }
+          }
           return;
         }
+        console.warn("rd: h264 decode failed", err);
         fallbackToJpegCodec(err);
       }
     }
