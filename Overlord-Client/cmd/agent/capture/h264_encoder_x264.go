@@ -66,13 +66,15 @@ func ensureH264EncoderLocked(width, height int) error {
 	closeH264EncoderLocked()
 
 	opts := &x264.Options{
-		Width:     width,
-		Height:    height,
-		FrameRate: 25,
-		Tune:      "zerolatency",
-		Preset:    "ultrafast",
-		Profile:   "baseline",
-		LogLevel:  x264.LogError,
+		Width:        width,
+		Height:       height,
+		FrameRate:    120,
+		Tune:         "zerolatency,fastdecode",
+		Preset:       "ultrafast",
+		Profile:      "baseline",
+		RateControl:  "crf",
+		RateConstant: 30,
+		LogLevel:     x264.LogError,
 	}
 
 	enc, err := x264.NewEncoder(&h264Buf, opts)

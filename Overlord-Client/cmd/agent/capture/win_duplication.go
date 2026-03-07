@@ -686,7 +686,7 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 
 	var info dxgiOutDuplFrameInfo
 	var resource *iunknown
-	hr := s.dup.AcquireNextFrame(50, &info, &resource)
+	hr := s.dup.AcquireNextFrame(5, &info, &resource)
 	if hr == dxgiErrorWaitTimeout {
 		if s.lastBase != nil {
 			img := s.composeFrame(s.lastBase)
@@ -756,14 +756,27 @@ func (s *duplicationState) composeFrame(base *image.RGBA) *image.RGBA {
 	if base == nil {
 		return nil
 	}
-	img := cloneRGBA(base)
+	userScale := captureScale()
+	withCursor := cursorCaptureEnabled.Load()
+
+	// Fast path: no cursor overlay and no scaling means we can reuse the raw
+	// frame without an extra clone/copy.
+	if !withCursor && userScale == 1 {
+		return base
+	}
+
+	img := base
+	if withCursor {
+		img = cloneRGBA(base)
+	}
 	bounds := s.bounds
 	if bounds.Dx() != int(s.desc.ModeDesc.Width) || bounds.Dy() != int(s.desc.ModeDesc.Height) {
 		bounds = image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Min.X+int(s.desc.ModeDesc.Width), bounds.Min.Y+int(s.desc.ModeDesc.Height))
 	}
-	drawCursorRotated(img, s.cursorBounds, bounds, s.desc.Rotation)
+	if withCursor {
+		drawCursorRotated(img, s.cursorBounds, bounds, s.desc.Rotation)
+	}
 
-	userScale := captureScale()
 	rotW := img.Bounds().Dx()
 	rotH := img.Bounds().Dy()
 	dstW := int(float64(rotW) * userScale)
@@ -1108,16 +1121,6 @@ func drawCursorRotated(img *image.RGBA, cursorBounds, captureBounds image.Rectan
 	curX := ci.ptScreenPos.x
 	curY := ci.ptScreenPos.y
 
-	var icon iconInfo
-	ret, _, _ = procGetIconInfo.Call(ci.hCursor, uintptr(unsafe.Pointer(&icon)))
-	if ret != 0 {
-		if icon.hbmMask != 0 {
-			defer deleteObject(icon.hbmMask)
-		}
-		if icon.hbmColor != 0 {
-			defer deleteObject(icon.hbmColor)
-		}
-	}
 	if cursorBounds.Empty() {
 		cursorBounds = captureBounds
 	}
@@ -1151,9 +1154,10 @@ func drawCursorRotated(img *image.RGBA, cursorBounds, captureBounds image.Rectan
 		ry = localY
 	}
 	rotBounds := image.Rect(0, 0, img.Bounds().Dx(), img.Bounds().Dy())
-	if !drawRealCursorOnImage(img, ci.hCursor, int32(rx), int32(ry), int32(icon.xHotspot), int32(icon.yHotspot)) {
-		drawCursor(img, int32(rx), int32(ry), rotBounds)
-	}
+
+	// Performance-first cursor overlay for duplication path: avoid per-frame
+	// icon extraction/DC composition and draw a lightweight software cursor.
+	drawCursor(img, int32(rx), int32(ry), rotBounds)
 }
 
 func drawRealCursorOnImage(img *image.RGBA, hCursor uintptr, hotX, hotY, xHotspot, yHotspot int32) bool {
