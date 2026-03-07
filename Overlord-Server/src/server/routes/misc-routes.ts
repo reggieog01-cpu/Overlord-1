@@ -6,6 +6,7 @@ import { listClients } from "../../db";
 import { logger } from "../../logger";
 import { metrics } from "../../metrics";
 import { requirePermission } from "../../rbac";
+import { runCertbotSetup } from "../certbot-setup";
 
 type MiscRouteDeps = {
   CORS_HEADERS: Record<string, string>;
@@ -191,6 +192,88 @@ export async function handleMiscRoutes(
       });
 
       return Response.json({ ok: true, tls: updated }, { headers: deps.CORS_HEADERS });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/settings/tls/certbot/setup") {
+    const user = await authenticateRequest(req);
+    if (!user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    if (user.role !== "admin") {
+      return new Response("Forbidden: Admin access required", { status: 403 });
+    }
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const domain = String(body?.domain || "").trim();
+    const email = String(body?.email || "").trim();
+    const livePath = String(body?.livePath || "/etc/letsencrypt/live").trim() || "/etc/letsencrypt/live";
+
+    try {
+      const result = await runCertbotSetup({ domain, email, livePath });
+
+      const updated = await updateTlsConfig({
+        certbot: {
+          enabled: true,
+          livePath,
+          domain,
+          certFileName: "fullchain.pem",
+          keyFileName: "privkey.pem",
+          caFileName: "chain.pem",
+        },
+      });
+
+      logAudit({
+        timestamp: Date.now(),
+        username: user.username,
+        ip: deps.requestIP?.(req)?.address || "unknown",
+        action: AuditAction.COMMAND,
+        details: `Ran certbot setup for domain ${domain}`,
+        success: true,
+      });
+
+      return Response.json(
+        {
+          ok: true,
+          tls: updated,
+          certbot: {
+            certPath: result.certPath,
+            keyPath: result.keyPath,
+            caPath: result.caPath,
+            output: result.output,
+          },
+          message:
+            "Certificate issued and certbot TLS mode enabled. Restart the server/container to load the new certificate.",
+        },
+        { headers: deps.CORS_HEADERS },
+      );
+    } catch (error: any) {
+      logger.error("[TLS] certbot auto-setup failed", error);
+
+      logAudit({
+        timestamp: Date.now(),
+        username: user.username,
+        ip: deps.requestIP?.(req)?.address || "unknown",
+        action: AuditAction.COMMAND,
+        details: `Certbot setup failed for domain ${domain}`,
+        success: false,
+        errorMessage: String(error?.message || error),
+      });
+
+      return Response.json(
+        {
+          ok: false,
+          error: String(error?.message || "Certbot setup failed"),
+        },
+        { status: 400, headers: deps.CORS_HEADERS },
+      );
     }
   }
 

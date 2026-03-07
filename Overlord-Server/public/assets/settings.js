@@ -39,6 +39,8 @@ const securityRequireSymbolInput = document.getElementById("security-require-sym
 const tlsForm = document.getElementById("tls-form");
 const tlsPermissionNote = document.getElementById("tls-permission-note");
 const tlsSaveBtn = document.getElementById("tls-save-btn");
+const tlsCertbotAutoBtn = document.getElementById("tls-certbot-auto-btn");
+const tlsCertbotEmailInput = document.getElementById("tls-certbot-email");
 const tlsCertbotEnabledInput = document.getElementById("tls-certbot-enabled");
 const tlsCertbotLivePathInput = document.getElementById("tls-certbot-live-path");
 const tlsCertbotDomainInput = document.getElementById("tls-certbot-domain");
@@ -136,6 +138,7 @@ function setSecurityFormDisabled(disabled) {
 
 function setTlsFormDisabled(disabled) {
   const controls = [
+    tlsCertbotEmailInput,
     tlsCertbotEnabledInput,
     tlsCertbotLivePathInput,
     tlsCertbotDomainInput,
@@ -143,12 +146,21 @@ function setTlsFormDisabled(disabled) {
     tlsCertbotKeyFileInput,
     tlsCertbotCaFileInput,
     tlsSaveBtn,
+    tlsCertbotAutoBtn,
   ];
 
   for (const control of controls) {
     if (!control) continue;
     control.disabled = disabled;
   }
+}
+
+function setTlsAutoSetupRunning(running) {
+  if (!tlsCertbotAutoBtn) return;
+  tlsCertbotAutoBtn.disabled = running;
+  tlsCertbotAutoBtn.innerHTML = running
+    ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Running Certbot Setup...'
+    : '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Auto Setup Free SSL (Let\'s Encrypt)';
 }
 
 function applySecurityForm() {
@@ -200,6 +212,7 @@ async function loadSecurityPolicy() {
 function applyTlsForm() {
   const certbot = tlsConfig?.certbot || {};
   tlsCertbotEnabledInput.checked = Boolean(certbot.enabled);
+  tlsCertbotEmailInput.value = "";
   tlsCertbotLivePathInput.value = certbot.livePath || "/etc/letsencrypt/live";
   tlsCertbotDomainInput.value = certbot.domain || "";
   tlsCertbotCertFileInput.value = certbot.certFileName || "fullchain.pem";
@@ -385,6 +398,55 @@ async function saveTlsSettings(event) {
   showMessage("TLS settings updated. Restart server to apply.");
 }
 
+async function runCertbotAutoSetup() {
+  if (!isAdmin(currentUser?.role)) {
+    showMessage("Admin role required.", "error");
+    return;
+  }
+
+  const domain = String(tlsCertbotDomainInput.value || "").trim();
+  const email = String(tlsCertbotEmailInput.value || "").trim();
+  const livePath = String(tlsCertbotLivePathInput.value || "").trim() || "/etc/letsencrypt/live";
+
+  if (!domain) {
+    showMessage("Please enter a domain first.", "error");
+    return;
+  }
+
+  if (!email) {
+    showMessage("Please enter an email first.", "error");
+    return;
+  }
+
+  setTlsAutoSetupRunning(true);
+
+  try {
+    const res = await fetch("/api/settings/tls/certbot/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ domain, email, livePath }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showMessage(data.error || "Certbot setup failed.", "error");
+      return;
+    }
+
+    tlsConfig = data.tls || tlsConfig;
+    applyTlsForm();
+    const details = data?.certbot?.certPath
+      ? ` Cert: ${data.certbot.certPath}`
+      : "";
+    showMessage(`${data.message || "Certbot setup complete."}${details}`);
+  } catch (error) {
+    showMessage(`Certbot setup failed: ${String(error?.message || error)}`, "error");
+  } finally {
+    setTlsAutoSetupRunning(false);
+  }
+}
+
 async function loadBannedIps() {
   if (!currentUser) return;
 
@@ -483,6 +545,7 @@ async function init() {
     prefsForm.addEventListener("submit", savePrefs);
     securityForm.addEventListener("submit", saveSecurityPolicy);
     tlsForm.addEventListener("submit", saveTlsSettings);
+    tlsCertbotAutoBtn.addEventListener("click", runCertbotAutoSetup);
     refreshBansBtn.addEventListener("click", loadBannedIps);
     bansTableBody.addEventListener("click", handleUnbanClick);
   } catch (error) {

@@ -211,6 +211,15 @@
             </label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="block">
+                <span class="text-sm text-slate-300">Let's Encrypt account email</span>
+                <input
+                  id="tls-certbot-email"
+                  type="email"
+                  placeholder="admin@example.com"
+                  class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </label>
               <label class="block sm:col-span-2">
                 <span class="text-sm text-slate-300">Certbot live base path</span>
                 <input
@@ -256,6 +265,19 @@
                   class="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </label>
+            </div>
+
+            <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-3 space-y-2">
+              <div class="text-xs text-slate-300">
+                One-click setup requirements: DNS for the domain must point to this server and inbound port 80 must be reachable.
+              </div>
+              <button
+                type="button"
+                id="tls-certbot-auto-btn"
+                class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 transition-colors text-white font-medium"
+              >
+                <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Auto Setup Free SSL (Let's Encrypt)
+              </button>
             </div>
 
             <button
