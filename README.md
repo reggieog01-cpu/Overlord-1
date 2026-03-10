@@ -8,116 +8,284 @@
 
 Hello, I made this project for fun.
 
-----
+---
 
-[Using Docker](#Using-Docker)<br>
-[Prod Packages](#Using-Production-packages-(Windows))
+- [Quick Start (Docker)](#quick-start-docker)
+- [Docker Install By OS](#docker-install-by-os)
+- [No Docker (.bat / .sh)](#no-docker-bat--sh)
+- [Production Package Scripts](#production-package-scripts)
+- [Docker Notes (TLS, reverse proxy, cache)](#docker-notes-tls-reverse-proxy-cache)
 
-----
+---
 
-## Using-Docker
+## Quick Start (Docker)
 
-*Please keep in mind you should run docker with nessesary perms, have access to the internet and actually have docker installed. 
-Install-Debian-Linux(GIVE ME SUDO).sh is a good start point*
+If you just want it running fast, use this.
 
-Just use docker please the src is fine to use as well but you need golang, bun, garble and openssl.
+1. Create a `docker-compose.yml` file and paste this:
 
-To use docker copy the docker-compose.yml to your working directory and run
+```yaml
+services:
+  overlord-server:
+    image: ghcr.io/vxaboveground/overlord:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=.docker-cache/buildx
+      cache_to:
+        - type=local,dest=.docker-cache/buildx,mode=max
+    container_name: overlord-server
+    ports:
+      - "5173:5173"
+    environment:
+      - OVERLORD_USER=admin
+      - OVERLORD_PASS=
+      - JWT_SECRET=
+      - OVERLORD_AGENT_TOKEN=
+      - PORT=5173
+      - HOST=0.0.0.0
+      - OVERLORD_TLS_CERT=/app/certs/server.crt
+      - OVERLORD_TLS_KEY=/app/certs/server.key
+      - OVERLORD_TLS_CA=
+      - OVERLORD_TLS_OFFLOAD=false
+      - OVERLORD_TLS_CERTBOT_ENABLED=false
+      - OVERLORD_TLS_CERTBOT_LIVE_PATH=/etc/letsencrypt/live
+      - OVERLORD_TLS_CERTBOT_DOMAIN=
+      - OVERLORD_TLS_CERTBOT_CERT_FILE=fullchain.pem
+      - OVERLORD_TLS_CERTBOT_KEY_FILE=privkey.pem
+      - OVERLORD_TLS_CERTBOT_CA_FILE=chain.pem
+      - OVERLORD_CLIENT_BUILD_CACHE_DIR=/app/client-build-cache
+      - OVERLORD_FILE_UPLOAD_INTENT_TTL_MS=1800000
+      - OVERLORD_FILE_UPLOAD_PULL_TTL_MS=1800000
+    volumes:
+      - overlord-data:/app/data
+      - overlord-certs:/app/certs
+      - overlord-client-build-cache:/app/client-build-cache
+    restart: unless-stopped
+    networks:
+      - overlord-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:5173/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+networks:
+  overlord-network:
+    driver: bridge
 
-```sh
-docker compose up
+volumes:
+  overlord-data:
+  overlord-certs:
+  overlord-client-build-cache:
 ```
 
-On first startup, if secrets are not provided through environment variables,
-Overlord generates them and persists them to `data/save.json` (inside Docker:
-`/app/data/save.json`). This includes:
-
-- JWT signing secret
-- Agent auth token
-
-Initial bootstrap login defaults to username `admin` and password `admin`
-unless overridden with `OVERLORD_USER` / `OVERLORD_PASS`.
-
-Keep `save.json` private and backed up. Use values from that file if you need
-to recover JWT or agent token values.
-
-to update run
+2. Start it:
 
 ```sh
-docker compose pull
-```
-
-### Faster local rebuilds (BuildKit cache)
-
-`docker-compose.yml` now includes local BuildKit cache settings under `build.cache_from` / `build.cache_to`.
-Use these commands when changing source code and rebuilding locally:
-
-```sh
-docker compose build
 docker compose up -d
 ```
 
-or in one step:
+3. Open the panel:
 
-```sh
-docker compose up --build -d
+```text
+https://localhost:5173
 ```
 
-Build cache is stored in `.docker-cache/buildx` and reused across builds.
+4. Update later:
 
-### UI client build cache (runtime)
+```sh
+docker compose pull
+docker compose up -d
+```
 
-Client builds triggered from the Overlord UI now use a dedicated persistent cache volume:
+5. Stop:
 
-- volume: `overlord-client-build-cache`
-- mount path: `/app/client-build-cache`
-- env var: `OVERLORD_CLIENT_BUILD_CACHE_DIR` (default `/app/client-build-cache`)
+```sh
+docker compose down
+```
 
-This cache is used only for runtime client builds (`go build` / `garble build` from the Build page) and stays warm across container restarts and updates.
+First startup generates secrets and stores them in `data/save.json` (inside container: `/app/data/save.json`).
+Keep that file private and backed up.
 
-## Docker TLS with certbot
+Default bootstrap login is `admin` / `admin` unless you set `OVERLORD_USER` and `OVERLORD_PASS`.
 
-If you want to avoid self-signed certificates in Docker/production, enable certbot TLS settings:
+## Docker Install By OS
 
-- Set `OVERLORD_TLS_CERTBOT_ENABLED=true`
-- Set `OVERLORD_TLS_CERTBOT_DOMAIN=your-domain.com`
-- Mount letsencrypt into the container (for example `- /etc/letsencrypt:/etc/letsencrypt:ro`)
+### Windows
 
-By default Overlord reads:
+Install Docker Desktop (includes Docker Compose):
 
-- cert: `/etc/letsencrypt/live/<domain>/fullchain.pem`
-- key: `/etc/letsencrypt/live/<domain>/privkey.pem`
-- ca: `/etc/letsencrypt/live/<domain>/chain.pem`
+- https://docs.docker.com/desktop/setup/install/windows-install/
 
-These can be changed with:
-`OVERLORD_TLS_CERTBOT_LIVE_PATH`,
-`OVERLORD_TLS_CERTBOT_CERT_FILE`,
-`OVERLORD_TLS_CERTBOT_KEY_FILE`, and
-`OVERLORD_TLS_CERTBOT_CA_FILE`.
+or with winget:
 
-It's literally just docker any question chatgpt can answer so don't worry.
+```powershell
+winget install -e --id Docker.DockerDesktop
+```
 
-## Reverse proxy TLS offload (Render, etc.)
+After install, start Docker Desktop once, then verify:
 
-Some platforms (such as Render Web Services) terminate TLS at the edge and expect your container to serve plain HTTP on the internal port.
+```powershell
+docker --version
+docker compose version
+```
 
-For those platforms, set:
+### Linux (Debian, official apt repo method)
 
-- `OVERLORD_TLS_OFFLOAD=true`
+Official docs:
 
-Defaults are unchanged. If `OVERLORD_TLS_OFFLOAD` is not set (or false), Overlord keeps its current behavior and serves HTTPS/WSS directly with configured/self-signed/certbot certificates.
+- https://docs.docker.com/engine/install/debian/
 
-When offload mode is enabled:
+Set up Docker's apt repository:
 
-- Container listener is `http://0.0.0.0:$PORT` (internal only)
-- External URL should still be `https://...` via your platform proxy
-- Health checks should target `http://localhost:$PORT/health` inside the container
-- Do not expose the internal container port directly to the public internet
+```bash
+# Add Docker's official GPG key:
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-## Using-Production-packages-(Windows)
+# Add the repository to Apt sources:
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
-Build a production-ready package where the server can still build client binaries at runtime:
+sudo apt update
+```
+
+If you use a derivative distro (for example Kali), you may need to replace:
+
+```bash
+(. /etc/os-release && echo "$VERSION_CODENAME")
+```
+
+with the matching Debian codename (for example `bookworm`).
+
+Install latest Docker packages:
+
+```bash
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Verify service status:
+
+```bash
+sudo systemctl status docker
+```
+
+If your system does not auto-start Docker:
+
+```bash
+sudo systemctl start docker
+```
+
+Optional (run Docker without sudo):
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+Verify CLI:
+
+```bash
+docker --version
+docker compose version
+```
+
+### macOS
+
+Install Docker Desktop:
+
+- https://docs.docker.com/desktop/setup/install/mac-install/
+
+or with Homebrew:
+
+```bash
+brew install --cask docker
+```
+
+Start Docker Desktop once, then verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+## No Docker (.bat / .sh)
+
+If you do not want Docker, use the included scripts.
+
+Prerequisites for local (non-Docker) runs:
+
+- Bun in PATH
+- Go 1.21+ in PATH
+
+### Windows
+
+Development mode (starts server + client):
+
+```bat
+start-dev.bat
+```
+
+Production mode (build + run server executable):
+
+```bat
+start-prod.bat
+```
+
+Build client binaries:
+
+```bat
+build-clients.bat
+```
+
+### Linux / macOS
+
+Make scripts executable once:
+
+```bash
+chmod +x start-dev.sh start-dev-server.sh start-dev-client.sh start-prod.sh build-prod-package.sh
+```
+
+Development mode (starts server in background + client in foreground):
+
+```bash
+./start-dev.sh
+```
+
+Only server:
+
+```bash
+./start-dev.sh server
+```
+
+Only client:
+
+```bash
+./start-dev.sh client
+```
+
+Production mode:
+
+```bash
+./start-prod.sh
+```
+
+## Production Package Scripts
+
+Build a production-ready package where the server can still build client binaries at runtime.
+
+Windows:
 
 ```bat
 build-prod-package.bat
@@ -129,20 +297,61 @@ Linux/macOS:
 ./build-prod-package.sh
 ```
 
-Windows output folder:
+Package output:
 
-```text
-release
+- Windows script: `release`
+- Linux/macOS script: `release/prod-package`
+
+## Docker Notes (TLS, reverse proxy, cache)
+
+### BuildKit cache for faster rebuilds
+
+`docker-compose.yml` includes `build.cache_from` and `build.cache_to` using `.docker-cache/buildx`.
+
+Rebuild:
+
+```sh
+docker compose up --build -d
 ```
 
-Windows package includes:
-- `Overlord-Client`
-- `overlord-server.exe`
-- `overlord-server-linux-x64`
-- `start-prod-release.bat`
-- `start-prod-release.sh`
-- `public`
+### Runtime client build cache
 
-`build-prod-package.bat` also minifies `public/assets/*.js` into the release package.
+The compose setup uses a persistent volume for runtime client builds:
 
-Note: both packaging scripts always skip building client binaries and export `Overlord-Client` source for runtime builds.
+- volume: `overlord-client-build-cache`
+- mount: `/app/client-build-cache`
+- env: `OVERLORD_CLIENT_BUILD_CACHE_DIR` (default `/app/client-build-cache`)
+
+### Certbot TLS
+
+To use certbot certificates in production Docker:
+
+- Set `OVERLORD_TLS_CERTBOT_ENABLED=true`
+- Set `OVERLORD_TLS_CERTBOT_DOMAIN=your-domain.com`
+- Mount letsencrypt into container read-only (example: `/etc/letsencrypt:/etc/letsencrypt:ro`)
+
+Default cert paths:
+
+- cert: `/etc/letsencrypt/live/<domain>/fullchain.pem`
+- key: `/etc/letsencrypt/live/<domain>/privkey.pem`
+- ca: `/etc/letsencrypt/live/<domain>/chain.pem`
+
+Override with:
+
+- `OVERLORD_TLS_CERTBOT_LIVE_PATH`
+- `OVERLORD_TLS_CERTBOT_CERT_FILE`
+- `OVERLORD_TLS_CERTBOT_KEY_FILE`
+- `OVERLORD_TLS_CERTBOT_CA_FILE`
+
+### Reverse proxy TLS offload (Render, etc.)
+
+If your platform terminates TLS before traffic reaches Overlord, set:
+
+- `OVERLORD_TLS_OFFLOAD=true`
+
+When enabled:
+
+- container serves internal HTTP on `0.0.0.0:$PORT`
+- external URL remains `https://...` through your platform proxy
+- health checks should use `http://localhost:$PORT/health` inside the container
+- do not expose internal container HTTP port directly to the internet
