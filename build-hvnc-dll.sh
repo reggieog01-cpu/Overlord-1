@@ -4,15 +4,14 @@
 #
 # Requirements:
 #   - x86_64-w64-mingw32-gcc
-#   - MinHook source files in HVNCInjection/src/minhook/ (see below)
+#   - MinHook source files under HVNCInjection/minhook/ (preferred),
+#     or already staged in HVNCInjection/src/minhook/
 #
 # MinHook setup:
 #   The project needs MinHook source compiled from scratch for MinGW.
 #   1) Clone https://github.com/TsudaKageworked/minhook (BSD-2 license)
-#   2) Copy src/buffer.c, src/buffer.h, src/trampoline.c, src/trampoline.h,
-#      src/hde/hde64.c, src/hde/hde64.h, src/hde/hde32.c, src/hde/hde32.h,
-#      src/hde/table64.h, src/hde/table32.h, include/MinHook.h
-#      into HVNCInjection/src/minhook/
+#   2) Copy src/* and src/hde/* plus include/MinHook.h into
+#      HVNCInjection/minhook/
 #   3) Run this script.
 #
 # If MinHook source is not available, you can pre-build the DLL with MSVC
@@ -29,10 +28,54 @@ DLL_NAME="HVNCInjection.x64.dll"
 MINHOOK_REPO="${MINHOOK_REPO:-https://github.com/TsudaKageyu/minhook.git}"
 MINHOOK_REF="${MINHOOK_REF:-master}"
 HVNC_FETCH_MINHOOK="${HVNC_FETCH_MINHOOK:-1}"
+MINHOOK_STATIC_DIR="${MINHOOK_STATIC_DIR:-HVNCInjection/Minhook}"
 
 mkdir -p "$OUT_DIR"
 
 MINHOOK_DIR="$SRC_DIR/minhook"
+
+stage_minhook_tree() {
+  local source_root="$1"
+
+  mkdir -p "$MINHOOK_DIR/hde"
+  cp -f "$source_root/buffer.c" "$MINHOOK_DIR/" 2>/dev/null || true
+  cp -f "$source_root/buffer.h" "$MINHOOK_DIR/" 2>/dev/null || true
+  cp -f "$source_root/hook.c" "$MINHOOK_DIR/" 2>/dev/null || true
+  cp -f "$source_root/trampoline.c" "$MINHOOK_DIR/" 2>/dev/null || true
+  cp -f "$source_root/trampoline.h" "$MINHOOK_DIR/" 2>/dev/null || true
+  cp -f "$source_root/hde/hde64.c" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/hde64.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/hde32.c" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/hde32.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/pstdint.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/table64.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+  cp -f "$source_root/hde/table32.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
+
+  mkdir -p "$SRC_DIR/include"
+  if [ -f "$source_root/MinHook.h" ]; then
+    cp -f "$source_root/MinHook.h" "$MINHOOK_DIR/MinHook.h" 2>/dev/null || true
+    cp -f "$source_root/MinHook.h" "$SRC_DIR/include/MinHook.h" 2>/dev/null || true
+  fi
+}
+
+stage_minhook_from_static_dir() {
+  local candidate=""
+
+  for dir in "$MINHOOK_STATIC_DIR" "HVNCInjection/Minhook" "HVNCInjection/minhook"; do
+    if [ -f "$dir/hook.c" ] && [ -f "$dir/hde/hde64.c" ]; then
+      candidate="$dir"
+      break
+    fi
+  done
+
+  if [ -n "$candidate" ]; then
+    echo "Using static MinHook source from $candidate"
+    stage_minhook_tree "$candidate"
+    return 0
+  fi
+
+  return 1
+}
 
 if ! command -v "$CC" >/dev/null 2>&1; then
   echo "ERROR: Cross compiler not found: $CC"
@@ -60,20 +103,8 @@ fetch_minhook() {
     return 1
   fi
 
-  mkdir -p "$MINHOOK_DIR/hde"
-  cp -f "$tmpdir/minhook/src/buffer.c" "$MINHOOK_DIR/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/buffer.h" "$MINHOOK_DIR/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hook.c" "$MINHOOK_DIR/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/trampoline.c" "$MINHOOK_DIR/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/trampoline.h" "$MINHOOK_DIR/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/hde64.c" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/hde64.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/hde32.c" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/hde32.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/pstdint.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/table64.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/src/hde/table32.h" "$MINHOOK_DIR/hde/" 2>/dev/null || true
-  cp -f "$tmpdir/minhook/include/MinHook.h" "$MINHOOK_DIR/" 2>/dev/null || true
+  stage_minhook_tree "$tmpdir/minhook/src"
+  cp -f "$tmpdir/minhook/include/MinHook.h" "$MINHOOK_DIR/MinHook.h" 2>/dev/null || true
   mkdir -p "$SRC_DIR/include"
   cp -f "$tmpdir/minhook/include/MinHook.h" "$SRC_DIR/include/MinHook.h" 2>/dev/null || true
   rm -rf "$tmpdir"
@@ -82,7 +113,7 @@ fetch_minhook() {
 }
 
 if [ ! -d "$MINHOOK_DIR" ]; then
-  if ! fetch_minhook; then
+  if ! stage_minhook_from_static_dir && ! fetch_minhook; then
     echo "WARNING: MinHook source not found at $MINHOOK_DIR"
     echo "Attempting to use pre-compiled libMinHook.x64.lib ..."
     echo "(This may fail with MinGW. Build with MSVC on Windows instead.)"
@@ -95,7 +126,7 @@ fi
 if [ -d "$MINHOOK_DIR" ]; then
   if [ ! -f "$MINHOOK_DIR/hook.c" ] && [ ! -f "$MINHOOK_DIR/MinHook.c" ]; then
     # Some trees have the folder but not the expected source files.
-    fetch_minhook || true
+    stage_minhook_from_static_dir || fetch_minhook || true
   fi
 fi
 
