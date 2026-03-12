@@ -47,8 +47,11 @@ RDI_NOINLINE ULONG_PTR caller(VOID)
 {
 #ifdef _MSC_VER
 	return (ULONG_PTR)_ReturnAddress();
+#elif defined(__GNUC__) || defined(__clang__)
+	// For MinGW/Clang, use GCC builtins and extract helper for target-specific safety.
+	return (ULONG_PTR)__builtin_extract_return_addr(__builtin_return_address(0));
 #else
-	return (ULONG_PTR)__builtin_return_address(0);
+	return 0;
 #endif
 }
 //===============================================================================================//

