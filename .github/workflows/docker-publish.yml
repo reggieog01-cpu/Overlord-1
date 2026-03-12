@@ -11,7 +11,26 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  build-hvnc-dll:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build HVNCInjection DLL with MSVC
+        shell: cmd
+        run: call build-hvnc-dll.bat
+
+      - name: Upload HVNCInjection DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: hvnc-dll
+          path: Overlord-Server/dist-clients/HVNCInjection.x64.dll
+          if-no-files-found: error
+          retention-days: 1
+
   build-and-push:
+    needs: build-hvnc-dll
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,6 +39,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download HVNCInjection DLL
+        uses: actions/download-artifact@v4
+        with:
+          name: hvnc-dll
+          path: Overlord-Server/dist-clients
 
       - name: Read Source Version
         id: srcver
