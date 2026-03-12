@@ -1,33 +1,290 @@
+// ── Context menu data ─────────────────────────────────────────────────────────
+const MENU_GROUPS = [
+  {
+    id: "remote-access",
+    label: "Remote Access",
+    icon: "fa-solid fa-plug",
+    color: "text-indigo-400",
+    items: [
+      { label: "Console",        icon: "fa-solid fa-terminal",        icolor: "text-emerald-400", open: "console" },
+      { label: "Remote Desktop", icon: "fa-solid fa-desktop",         icolor: "text-purple-400",  open: "remotedesktop" },
+      { label: "Backstage",      icon: "fa-solid fa-ghost",           icolor: "text-violet-400",  open: "Backstage" },
+      { label: "Voice",          icon: "fa-solid fa-headset",         icolor: "text-teal-400",    open: "voice" },
+    ],
+  },
+  {
+    id: "monitoring",
+    label: "Monitoring",
+    icon: "fa-solid fa-eye",
+    color: "text-cyan-400",
+    items: [
+      { label: "Webcam",          icon: "fa-solid fa-video",      icolor: "text-emerald-400", open: "webcam" },
+      { label: "Keylogger",       icon: "fa-solid fa-keyboard",   icolor: "text-yellow-400",  open: "keylogger" },
+      { label: "Process Manager", icon: "fa-solid fa-list-check", icolor: "text-orange-400",  open: "processes" },
+    ],
+  },
+  {
+    id: "system",
+    label: "System",
+    icon: "fa-solid fa-server",
+    color: "text-blue-400",
+    items: [
+      { label: "File Browser", icon: "fa-solid fa-folder-tree",   icolor: "text-blue-400", open: "files" },
+      { label: "SOCKS5 Proxy", icon: "fa-solid fa-network-wired", icolor: "text-sky-400",  open: "proxy" },
+      { label: "Execution",    icon: "fa-solid fa-rocket",         icolor: "text-cyan-400", open: "silent-exec", id: "menu-silent-exec", hidden: true },
+    ],
+  },
+  {
+    id: "agent",
+    label: "Agent",
+    icon: "fa-solid fa-robot",
+    color: "text-slate-400",
+    items: [
+      { label: "Ping",                  icon: "fa-solid fa-satellite-dish",    icolor: "text-slate-300", action: "ping" },
+      { label: "Reconnect",             icon: "fa-solid fa-rotate",            icolor: "text-slate-300", action: "reconnect" },
+      { label: "Set Nickname",          icon: "fa-solid fa-signature",         icolor: "text-slate-300", action: "set-nickname" },
+      { divider: true },
+      { label: "Disconnect",            icon: "fa-solid fa-plug-circle-xmark", icolor: "text-red-400",   action: "disconnect" },
+      { label: "Uninstall",             icon: "fa-solid fa-trash",             icolor: "text-red-300",   action: "uninstall" },
+      { label: "Remove From Dashboard", icon: "fa-solid fa-user-xmark",        icolor: "text-rose-300",  action: "remove-dashboard" },
+    ],
+  },
+];
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const menuStyle = document.createElement("style");
+menuStyle.textContent = `
+#command-menu {
+  position: fixed;
+  display: none;
+  flex-direction: row;
+  align-items: flex-start;
+  z-index: 9999;
+  filter: drop-shadow(0 8px 40px rgba(0,0,0,0.7));
+}
+#ctx-main {
+  background: #141c2b;
+  border: 1px solid rgba(148,163,184,0.14);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 196px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  position: relative;
+}
+#ctx-sub {
+  background: #141c2b;
+  border: 1px solid rgba(148,163,184,0.14);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 188px;
+  position: absolute;
+  left: calc(100% + 5px);
+  top: 0;
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 1;
+}
+.ctx-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #cbd5e1;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.1s, color 0.1s;
+}
+.ctx-row:hover,
+.ctx-row.ctx-active {
+  background: rgba(71,85,105,0.55);
+  color: #f1f5f9;
+}
+.ctx-row.ctx-active .ctx-chevron {
+  opacity: 1;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #cbd5e1;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.1s, color 0.1s;
+}
+.ctx-item:hover:not([disabled]):not([aria-disabled="true"]) {
+  background: rgba(71,85,105,0.55);
+  color: #f1f5f9;
+}
+.ctx-item[disabled],
+.ctx-item[aria-disabled="true"] {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.ctx-divider {
+  height: 1px;
+  background: rgba(148,163,184,0.13);
+  margin: 3px 4px;
+}
+.ctx-sub-panel {
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+}
+.ctx-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.ctx-chevron {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.4;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
+}
+/* Allow classList.add/remove("hidden") to work on items inside the menu */
+#command-menu .hidden { display: none !important; }
+/* Mobile: stack submenu below the main column */
+@media (max-width: 600px) {
+  #command-menu { flex-direction: column; max-width: calc(100vw - 16px); }
+  #ctx-sub { position: static; margin-top: 0; min-width: 0; width: 100%; border-radius: 0 0 8px 8px; border-top: 1px solid rgba(148,163,184,0.08); left: auto; right: auto; }
+  #ctx-main { border-radius: 8px 8px 0 0; }
+}
+`;
+document.head.appendChild(menuStyle);
+
+// ── Build DOM ─────────────────────────────────────────────────────────────────
+function buildItemHTML(item) {
+  if (item.divider) return `<div class="ctx-divider"></div>`;
+  const dataAttr  = item.open   ? `data-open="${item.open}"`   : `data-action="${item.action}"`;
+  const idAttr    = item.id     ? `id="${item.id}"`             : "";
+  const styleAttr = item.hidden ? `style="display:none"`        : "";
+  return `<button class="ctx-item" ${dataAttr} ${idAttr} ${styleAttr}><i class="${item.icon} ctx-icon ${item.icolor}"></i><span>${item.label}</span></button>`;
+}
+
+const mainRowsHTML =
+  MENU_GROUPS.map(g =>
+    `<button class="ctx-row" data-group-toggle="${g.id}"><i class="${g.icon} ctx-icon ${g.color}"></i><span style="flex:1">${g.label}</span><i class="fa-solid fa-chevron-right ctx-chevron"></i></button>`
+  ).join("") +
+  `<div class="ctx-divider"></div>` +
+  `<button class="ctx-row hidden" id="plugin-section" data-group-toggle="plugins"><i class="fa-solid fa-puzzle-piece ctx-icon text-fuchsia-400"></i><span style="flex:1">Plugins</span><i class="fa-solid fa-chevron-right ctx-chevron"></i></button>`;
+
+const subPanelsHTML =
+  MENU_GROUPS.map(g =>
+    `<div class="ctx-sub-panel" data-for="${g.id}">${g.items.map(buildItemHTML).join("")}</div>`
+  ).join("") +
+  `<div class="ctx-sub-panel" data-for="plugins"><div id="plugin-menu" style="display:flex;flex-direction:column;gap:1px"></div></div>`;
+
 const menu = document.createElement("div");
 menu.id = "command-menu";
-menu.className =
-  "fixed z-50 w-48 hidden flex-col gap-1.5 rounded-xl border border-slate-800 bg-slate-900/90 p-3 shadow-xl backdrop-blur overflow-y-auto overscroll-contain";
-menu.style.maxHeight = "min(70vh, 520px)";
-menu.innerHTML = `
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-emerald-800 bg-emerald-900/50 hover:bg-emerald-800/70 text-emerald-100 flex items-center gap-2" data-open="console"><i class="fa-solid fa-terminal"></i> Open Console</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-teal-800 bg-teal-900/45 hover:bg-teal-800/65 text-teal-100 flex items-center gap-2" data-open="voice"><i class="fa-solid fa-headset"></i> Voice Support</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-purple-800 bg-purple-900/50 hover:bg-purple-800/70 text-purple-100 flex items-center gap-2" data-open="remotedesktop"><i class="fa-solid fa-desktop"></i> Remote Desktop</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-emerald-800 bg-emerald-900/45 hover:bg-emerald-800/65 text-emerald-100 flex items-center gap-2" data-open="webcam"><i class="fa-solid fa-video"></i> Webcam Viewer</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-violet-800 bg-violet-900/50 hover:bg-violet-800/70 text-violet-100 flex items-center gap-2" data-open="hvnc"><i class="fa-solid fa-ghost"></i> HVNC</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-blue-800 bg-blue-900/50 hover:bg-blue-800/70 text-blue-100 flex items-center gap-2" data-open="files"><i class="fa-solid fa-folder-tree"></i> File Browser</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-orange-800 bg-orange-900/50 hover:bg-orange-800/70 text-orange-100 flex items-center gap-2" data-open="processes"><i class="fa-solid fa-list-check"></i> Process Manager</button>
-  <button id="menu-silent-exec" class="hidden w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-cyan-800 bg-cyan-900/40 hover:bg-cyan-800/60 text-cyan-100 flex items-center gap-2" data-open="silent-exec"><i class="fa-solid fa-rocket"></i> Execution</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-yellow-800 bg-yellow-900/50 hover:bg-yellow-800/70 text-yellow-100 flex items-center gap-2" data-open="keylogger"><i class="fa-solid fa-keyboard"></i> Keylogger</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-sky-800 bg-sky-900/50 hover:bg-sky-800/70 text-sky-100 flex items-center gap-2" data-open="proxy"><i class="fa-solid fa-network-wired"></i> SOCKS5 Proxy</button>
-  <div class="border-t border-slate-700 my-2"></div>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-slate-800 bg-slate-800/60 hover:bg-slate-700 flex items-center gap-2" data-action="ping"><i class="fa-solid fa-satellite-dish"></i> Ping</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-slate-800 bg-slate-800/60 hover:bg-slate-700 flex items-center gap-2" data-action="reconnect"><i class="fa-solid fa-rotate"></i> Reconnect</button>
-  <button class="w-full text-left px-3 py-2.5 mb-1 rounded-lg border border-red-800 bg-red-900/40 hover:bg-red-800/60 text-red-100 flex items-center gap-2" data-action="disconnect"><i class="fa-solid fa-plug-circle-xmark"></i> Disconnect</button>
-  <button class="w-full text-left px-3 py-2.5 rounded-lg border border-red-900 bg-red-950/60 hover:bg-red-900/80 text-red-200 flex items-center gap-2" data-action="uninstall"><i class="fa-solid fa-trash"></i> Uninstall</button>
-  <button class="w-full mt-1 text-left px-3 py-2.5 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-100 flex items-center gap-2" data-action="set-nickname"><i class="fa-solid fa-signature"></i> Set Nickname</button>
-  <button class="hidden w-full mt-1 text-left px-3 py-2.5 rounded-lg border border-rose-900 bg-rose-950/70 hover:bg-rose-900/90 text-rose-200 flex items-center gap-2" data-action="remove-dashboard"><i class="fa-solid fa-user-xmark"></i> Remove From Dashboard</button>
-  <div id="plugin-section" class="hidden">
-    <div class="border-t border-slate-700 my-2"></div>
-    <div class="text-[11px] uppercase tracking-wider text-slate-400 px-1 mb-1">Plugins</div>
-    <div id="plugin-menu" class="flex flex-col gap-1"></div>
-  </div>
-`;
+menu.setAttribute("role", "menu");
+menu.setAttribute("aria-hidden", "true");
+menu.innerHTML = `<div id="ctx-main">${mainRowsHTML}</div><div id="ctx-sub">${subPanelsHTML}</div>`;
 document.body.appendChild(menu);
+
+const ctxMain = menu.querySelector("#ctx-main");
+const ctxSub  = menu.querySelector("#ctx-sub");
+
+// ── Submenu interaction ───────────────────────────────────────────────────────
+let activeGroupId = null;
+let _hideTimer = null;
+
+function showSubmenu(groupId, rowEl) {
+  if (activeGroupId === groupId) return;
+  activeGroupId = groupId;
+
+  ctxMain.querySelectorAll(".ctx-row").forEach(r => r.classList.remove("ctx-active"));
+  rowEl.classList.add("ctx-active");
+
+  ctxSub.querySelectorAll(".ctx-sub-panel").forEach(p => { p.style.display = "none"; });
+  const panel = ctxSub.querySelector(`[data-for="${groupId}"]`);
+  if (!panel) { ctxSub.style.display = "none"; return; }
+  panel.style.display = "flex";
+  ctxSub.style.display = "flex";
+
+  // Align submenu vertically with the hovered row, then clamp to viewport
+  requestAnimationFrame(() => {
+    const rowRect  = rowEl.getBoundingClientRect();
+    const mainRect = ctxMain.getBoundingClientRect();
+    let offsetY = rowRect.top - mainRect.top;
+
+    const subH   = ctxSub.offsetHeight;
+    const menuTop = parseFloat(menu.style.top) || 0;
+    if (menuTop + offsetY + subH > window.innerHeight - 8) {
+      offsetY = Math.max(0, window.innerHeight - 8 - subH - menuTop);
+    }
+    ctxSub.style.top = offsetY + "px";
+
+    // Flip to left if submenu overflows right edge
+    const subW = ctxSub.offsetWidth;
+    if (mainRect.right + 5 + subW > window.innerWidth - 8) {
+      ctxSub.style.left  = "auto";
+      ctxSub.style.right = "calc(100% + 5px)";
+    } else {
+      ctxSub.style.left  = "calc(100% + 5px)";
+      ctxSub.style.right = "auto";
+    }
+  });
+}
+
+function hideSubmenu() {
+  clearTimeout(_hideTimer);
+  _hideTimer = null;
+  activeGroupId = null;
+  ctxSub.style.display = "none";
+  ctxSub.querySelectorAll(".ctx-sub-panel").forEach(p => { p.style.display = "none"; });
+  ctxMain.querySelectorAll(".ctx-row").forEach(r => r.classList.remove("ctx-active"));
+}
+
+// Desktop: hover to open group
+ctxMain.querySelectorAll(".ctx-row").forEach(rowEl => {
+  rowEl.addEventListener("mouseenter", () => {
+    const groupId = rowEl.dataset.groupToggle;
+    if (groupId) showSubmenu(groupId, rowEl);
+  });
+});
+
+// Debounced hide — prevents the 5px gap between panels from closing the submenu
+function scheduleHide() { _hideTimer = setTimeout(hideSubmenu, 150); }
+function cancelHide()   { clearTimeout(_hideTimer); _hideTimer = null; }
+
+ctxMain.addEventListener("mouseleave", scheduleHide);
+ctxMain.addEventListener("mouseenter", cancelHide);
+ctxSub.addEventListener("mouseenter",  cancelHide);
+ctxSub.addEventListener("mouseleave",  scheduleHide);
+
+// Touch / mobile: tap to toggle group
+ctxMain.querySelectorAll(".ctx-row").forEach(rowEl => {
+  rowEl.addEventListener("click", (e) => {
+    const groupId = rowEl.dataset.groupToggle;
+    if (!groupId) return;
+    e.stopPropagation();
+    if (activeGroupId === groupId) { hideSubmenu(); } else { showSubmenu(groupId, rowEl); }
+  });
+});
 
 const modal = document.createElement("div");
 modal.className =
@@ -39,37 +296,35 @@ const modalImg = modal.querySelector("#modal-img");
 export function openMenu(clientId, x, y, setContext, options = {}) {
   if (setContext) setContext(clientId);
 
+  // Toggle remove-dashboard visibility
   const removeBtn = menu.querySelector('[data-action="remove-dashboard"]');
   if (removeBtn) {
-    const isOnline = options.isOnline === true;
-    removeBtn.classList.toggle("hidden", isOnline);
+    removeBtn.style.display = options.isOnline === true ? "none" : "";
   }
 
-  menu.classList.remove("hidden");
+  // Reset submenu state
+  hideSubmenu();
 
-  const menuWidth = 192;
-  const menuHeight = menu.offsetHeight || 400;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
+  // Show menu off-screen first so we can measure, then reposition
+  menu.style.left = "-9999px";
+  menu.style.top  = "-9999px";
+  menu.style.display = "flex";
+  menu.setAttribute("aria-hidden", "false");
 
-  let left = x;
-  if (left + menuWidth > viewportWidth - 10) {
-    left = viewportWidth - menuWidth - 10;
-  }
-  if (left < 10) left = 10;
-
-  let top = y;
-  if (top + menuHeight > viewportHeight - 10) {
-    top = viewportHeight - menuHeight - 10;
-  }
-  if (top < 10) top = 10;
-
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
+  requestAnimationFrame(() => {
+    const mw = ctxMain.offsetWidth;
+    const mh = ctxMain.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    menu.style.left = Math.max(8, Math.min(x, vw - mw - 8)) + "px";
+    menu.style.top  = Math.max(8, Math.min(y, vh - mh - 8)) + "px";
+  });
 }
 
 export function closeMenu(clearContext) {
-  menu.classList.add("hidden");
+  menu.style.display = "none";
+  menu.setAttribute("aria-hidden", "true");
+  hideSubmenu();
   if (clearContext) clearContext();
 }
 

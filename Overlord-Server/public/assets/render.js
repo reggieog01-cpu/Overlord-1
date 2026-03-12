@@ -28,6 +28,8 @@ export function createRenderer({
   const isViewer = userRole === "viewer";
   const MAX_ANIMATED_CARDS = 120;
   const INSERT_BATCH_SIZE = 40;
+  const TOUCH_LONG_PRESS_MS = 520;
+  const TOUCH_MOVE_CANCEL_PX = 10;
   let renderToken = 0;
 
   function renderMerge(data) {
@@ -128,6 +130,18 @@ export function createRenderer({
     const card = document.createElement("article");
     card.dataset.id = client.id;
     card.dataset.hwid = client.hwid || "";
+    let longPressTimer = null;
+    let longPressTriggered = false;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+
+    const clearLongPress = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
     updateCard(card, client);
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -137,6 +151,35 @@ export function createRenderer({
       const { clientX, clientY } = e;
       openMenu(clientId, clientX, clientY);
     });
+
+    card.addEventListener("pointerdown", (e) => {
+      if (isViewer || e.pointerType !== "touch") return;
+      if (e.target.closest("button") || e.target.closest(".client-checkbox")) return;
+      const clientId = card.dataset.id;
+      if (!clientId) return;
+
+      longPressTriggered = false;
+      pointerStartX = e.clientX;
+      pointerStartY = e.clientY;
+      clearLongPress();
+      longPressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        openMenu(clientId, e.clientX, e.clientY);
+      }, TOUCH_LONG_PRESS_MS);
+    });
+
+    card.addEventListener("pointermove", (e) => {
+      if (!longPressTimer || e.pointerType !== "touch") return;
+      const movedX = Math.abs(e.clientX - pointerStartX);
+      const movedY = Math.abs(e.clientY - pointerStartY);
+      if (movedX > TOUCH_MOVE_CANCEL_PX || movedY > TOUCH_MOVE_CANCEL_PX) {
+        clearLongPress();
+      }
+    });
+
+    card.addEventListener("pointerup", clearLongPress);
+    card.addEventListener("pointercancel", clearLongPress);
+    card.addEventListener("pointerleave", clearLongPress);
 
     if (options.animate) {
       card.classList.add("card-animate");
@@ -274,6 +317,12 @@ export function createRenderer({
       ?.addEventListener("click", () => openModal(client.thumbnail));
 
     card.onclick = (e) => {
+      if (longPressTriggered) {
+        longPressTriggered = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.target.closest(".command-btn") || e.target.closest("button"))
         return;
       if (e.target.closest(".client-checkbox")) return;

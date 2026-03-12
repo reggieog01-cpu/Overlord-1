@@ -649,6 +649,18 @@ p {
   border-color: rgba(255, 99, 99, 0.2);
 }
 
+#command-menu .menu-group-toggle {
+  transition: background-color 0.16s ease;
+}
+
+#command-menu .menu-group-chevron {
+  transition: transform 0.18s ease;
+}
+
+#command-menu .menu-group-toggle[aria-expanded="false"] .menu-group-chevron {
+  transform: rotate(-90deg);
+}
+
 .pagination {
   display: flex;
   align-items: center;
@@ -703,11 +715,21 @@ p {
     max-height: calc(100vh - 20px);
     overflow-y: auto;
     font-size: 14px;
+    padding: 10px;
+    border-radius: 14px;
   }
 
   #command-menu button {
-    padding: 10px 12px;
+    padding: 11px 12px;
     font-size: 14px;
+  }
+
+  #command-menu .menu-group {
+    border-radius: 12px;
+  }
+
+  #command-menu .menu-group-body {
+    gap: 6px;
   }
 
   #command-menu i {

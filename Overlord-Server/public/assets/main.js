@@ -122,8 +122,8 @@ function applyMenuSupportRules(clientId) {
     btn.title = enabled ? "" : reason;
   };
 
-  const hvncBtn = menu.querySelector('[data-open="hvnc"]');
-  setAvailability(hvncBtn, isWindows, "HVNC is only supported on Windows clients.");
+  const hvncBtn = menu.querySelector('[data-open="Backstage"]');
+  setAvailability(hvncBtn, isWindows, "Backstage is only supported on Windows clients.");
 
   const webcamBtn = menu.querySelector('[data-open="webcam"]');
   setAvailability(webcamBtn, isWindows, "Webcam viewer is only supported on Windows clients.");
@@ -621,6 +621,7 @@ window.addEventListener("click", (e) => {
 menu.addEventListener("click", async (e) => {
   const target = e.target.closest("button");
   if (!target || !contextCard) return;
+  if (target.dataset.groupToggle) return;
   if (target.disabled || target.getAttribute("aria-disabled") === "true") {
     return;
   }
@@ -667,7 +668,7 @@ menu.addEventListener("click", async (e) => {
     closeMenu(clearContext);
     return;
   }
-  if (open === "hvnc") {
+  if (open === "Backstage") {
     window.open(`/hvnc?clientId=${contextCard}`, "_blank", "noopener");
     closeMenu(clearContext);
     return;
