@@ -62,6 +62,20 @@
           <div
             class="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-3 text-sm text-slate-300"
           >
+            <label for="resolutionSelect" class="text-slate-200">Resolution</label>
+            <select
+              id="resolutionSelect"
+              class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-100"
+            >
+              <option value="720">720p</option>
+              <option value="1080" selected>1080p</option>
+              <option value="1440">1440p</option>
+              <option value="-1">Native</option>
+            </select>
+          </div>
+          <div
+            class="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-3 text-sm text-slate-300"
+          >
             <label class="flex items-center gap-2 text-slate-200" title="Prefer H.264 when available; disable to force JPEG">
               <input type="checkbox" id="codecH264" checked /> H.264
             </label>

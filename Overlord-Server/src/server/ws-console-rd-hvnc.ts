@@ -154,6 +154,7 @@ export const rdStreamingState = new Map<string, {
   quality: number;
   codec: string;
   duplication: boolean;
+  maxHeight: number;
 }>();
 const rdInputPending = new Map<string, { clientId: string; sentAt: number; kind: string }>();
 const RD_INPUT_TTL_MS = 10_000;
@@ -370,6 +371,16 @@ export function handleRemoteDesktopViewerMessage(ws: ServerWebSocket<SocketData>
     case "desktop_enable_cursor":
       sendDesktopCommand(target, "desktop_enable_cursor", { enabled: !!payload.enabled });
       break;
+    case "desktop_set_resolution": {
+      const newMaxHeight = Number(payload.maxHeight) || 0;
+      if (state.maxHeight !== newMaxHeight) {
+        sendDesktopCommand(target, "desktop_set_resolution", { maxHeight: newMaxHeight });
+        state.maxHeight = newMaxHeight;
+        rdStreamingState.set(clientId, state);
+        logger.debug(`[rd] set max resolution height=${newMaxHeight}`);
+      }
+      break;
+    }
     case "desktop_set_duplication": {
       const enabled = !!payload.enabled;
       if (state.duplication !== enabled) {

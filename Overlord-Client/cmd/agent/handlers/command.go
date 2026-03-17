@@ -684,6 +684,18 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		capture.SetQualityAndCodec(quality, codec)
 		sendCommandResultSafe(env, cmdID, true, "")
 		return nil
+	case "desktop_set_resolution":
+		payload, _ := envelope["payload"].(map[string]interface{})
+		maxH := 0 // default = 1080p cap
+		if payload != nil {
+			if v, ok := payloadInt(payload, "maxHeight"); ok {
+				maxH = v
+			}
+		}
+		log.Printf("desktop: set max resolution height=%d", maxH)
+		capture.SetMaxResolution(maxH)
+		sendCommandResultSafe(env, cmdID, true, "")
+		return nil
 	case "desktop_mouse_move":
 		if !env.MouseControl {
 			sendCommandResultSafe(env, cmdID, true, "")

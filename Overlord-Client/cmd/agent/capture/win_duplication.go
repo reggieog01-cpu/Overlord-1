@@ -696,7 +696,7 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 			break
 		}
 		if s.lastBase != nil {
-			img := s.composeFrame(s.lastBase)
+			img := s.composeFrame(s.lastBase, int(s.desc.ModeDesc.Width), int(s.desc.ModeDesc.Height))
 			s.lastFrame = img
 			s.lastFrameAt = time.Now()
 			return img, nil
@@ -728,6 +728,12 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 	}
 
 	var img *image.RGBA
+	userScale := effectiveScale(width, height)
+	dstW := int(float64(width) * userScale)
+	dstH := int(float64(height) * userScale)
+	withCursor := cursorCaptureEnabled.Load()
+	wantScale := !withCursor && userScale != 1 && dstW > 0 && dstH > 0 && (dstW != width || dstH != height)
+
 	if s.desc.DesktopImageInSystemMemory != 0 {
 		var mapped dxgiMappedRect
 		hr = s.dup.MapDesktopSurface(&mapped)
@@ -743,11 +749,17 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 
 		pitch := int(mapped.Pitch)
 		src := unsafe.Slice(mapped.Bits, pitch*height)
-		img = convertBGRA(src, pitch, width, height, s.desc.Rotation)
+		if wantScale {
+			img = convertBGRAScaled(src, pitch, width, height, dstW, dstH, s.desc.Rotation)
+		}
+		if img == nil {
+			img = convertBGRA(src, pitch, width, height, s.desc.Rotation)
+		}
 		_ = s.dup.UnMapDesktopSurface()
 		_ = s.dup.ReleaseFrame()
 	} else {
-		img, hr = s.readbackFrame(width, height, s.desc.Rotation, resource)
+		img, hr = s.readbackFrame(width, height, s.desc.Rotation, resource,
+			wantScale, dstW, dstH)
 		_ = s.dup.ReleaseFrame()
 		if hr != S_OK || img == nil {
 			return nil, fmt.Errorf("dxgi: staging readback failed 0x%x", hr)
@@ -755,23 +767,26 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 	}
 
 	s.lastBase = img
-	img = s.composeFrame(img)
+	img = s.composeFrame(img, width, height)
 	s.lastFrame = img
 	s.lastFrameAt = time.Now()
 
 	return img, nil
 }
 
-func (s *duplicationState) composeFrame(base *image.RGBA) *image.RGBA {
+func (s *duplicationState) composeFrame(base *image.RGBA, nativeW, nativeH int) *image.RGBA {
 	if base == nil {
 		return nil
 	}
-	userScale := captureScale()
+	imgW := base.Bounds().Dx()
+	imgH := base.Bounds().Dy()
+	userScale := effectiveScale(nativeW, nativeH)
 	withCursor := cursorCaptureEnabled.Load()
 
-	// Fast path: no cursor overlay and no scaling means we can reuse the raw
-	// frame without an extra clone/copy.
-	if !withCursor && userScale == 1 {
+	dstW := int(float64(nativeW) * userScale)
+	dstH := int(float64(nativeH) * userScale)
+	alreadyScaled := (imgW == dstW && imgH == dstH) && (imgW != nativeW || imgH != nativeH)
+	if !withCursor && (userScale == 1 || alreadyScaled) {
 		return base
 	}
 
@@ -788,11 +803,7 @@ func (s *duplicationState) composeFrame(base *image.RGBA) *image.RGBA {
 		drawCursorRotated(img, s.cursorBounds, bounds, s.desc.Rotation)
 	}
 
-	rotW := img.Bounds().Dx()
-	rotH := img.Bounds().Dy()
-	dstW := int(float64(rotW) * userScale)
-	dstH := int(float64(rotH) * userScale)
-	if dstW > 0 && dstH > 0 && (dstW != rotW || dstH != rotH) {
+	if !alreadyScaled && dstW > 0 && dstH > 0 && (dstW != imgW || dstH != imgH) {
 		img = resizeNearest(img, dstW, dstH)
 	}
 	return img
@@ -896,7 +907,8 @@ func (s *duplicationState) ensure(display int) error {
 	return nil
 }
 
-func (s *duplicationState) readbackFrame(width, height int, rotation uint32, resource *iunknown) (*image.RGBA, uintptr) {
+func (s *duplicationState) readbackFrame(width, height int, rotation uint32, resource *iunknown,
+	wantScale bool, dstW, dstH int) (*image.RGBA, uintptr) {
 	if resource == nil || s.device == nil || s.context == nil {
 		return nil, uintptr(1)
 	}
@@ -946,7 +958,13 @@ func (s *duplicationState) readbackFrame(width, height int, rotation uint32, res
 
 	pitch := int(mapped.RowPitch)
 	src := unsafe.Slice((*byte)(mapped.Data), pitch*int(srcDesc.Height))
-	img := convertBGRA(src, pitch, int(srcDesc.Width), int(srcDesc.Height), rotation)
+	var img *image.RGBA
+	if wantScale {
+		img = convertBGRAScaled(src, pitch, int(srcDesc.Width), int(srcDesc.Height), dstW, dstH, rotation)
+	}
+	if img == nil {
+		img = convertBGRA(src, pitch, int(srcDesc.Width), int(srcDesc.Height), rotation)
+	}
 
 	return img, S_OK
 }
@@ -1123,6 +1141,33 @@ func convertBGRA(src []byte, pitch, width, height int, rotation uint32) *image.R
 		}
 		return dst
 	}
+}
+
+func convertBGRAScaled(src []byte, pitch, srcW, srcH, dstW, dstH int, rotation uint32) *image.RGBA {
+	if rotation != dxgiModeRotationIdentity && rotation != 0 {
+		return nil
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	xOff := make([]int, dstW)
+	for x := 0; x < dstW; x++ {
+		xOff[x] = (x * srcW / dstW) * 4
+	}
+	dstPix := dst.Pix
+	dstStride := dst.Stride
+	for y := 0; y < dstH; y++ {
+		sy := y * srcH / dstH
+		sRow := src[sy*pitch:]
+		dp := y * dstStride
+		for x := 0; x < dstW; x++ {
+			si := xOff[x]
+			di := dp + x*4
+			dstPix[di+0] = sRow[si+2]
+			dstPix[di+1] = sRow[si+1]
+			dstPix[di+2] = sRow[si+0]
+			dstPix[di+3] = 255
+		}
+	}
+	return dst
 }
 
 func drawCursorRotated(img *image.RGBA, cursorBounds, captureBounds image.Rectangle, rotation uint32) {

@@ -8,6 +8,11 @@ func resolveDesktopPoint(display int, x, y int32) (int32, int32) {
 		return x, y
 	}
 
+	if scale := capture.EffectiveScaleForInput(); scale > 0 && scale < 1 {
+		x = int32(float64(x) / scale)
+		y = int32(float64(y) / scale)
+	}
+
 	absX := int32(bounds.Min.X) + x
 	absY := int32(bounds.Min.Y) + y
 

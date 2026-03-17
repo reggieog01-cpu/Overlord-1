@@ -25,6 +25,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
   const kbdCtrl = document.getElementById("kbdCtrl");
   const cursorCtrl = document.getElementById("cursorCtrl");
   const duplicationCtrl = document.getElementById("duplicationCtrl");
+  const resolutionSelect = document.getElementById("resolutionSelect");
   const smoothingSlider = document.getElementById("smoothingSlider");
   const smoothingValue = document.getElementById("smoothingValue");
   const qualitySlider = document.getElementById("qualitySlider");
@@ -348,6 +349,20 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     });
   }
 
+  function pushResolution() {
+    if (resolutionSelect) {
+      const maxHeight = parseInt(resolutionSelect.value, 10);
+      console.debug("rd: pushResolution maxHeight=", maxHeight);
+      sendCmd("desktop_set_resolution", { maxHeight: maxHeight });
+    }
+  }
+
+  if (resolutionSelect) {
+    resolutionSelect.addEventListener("change", function () {
+      pushResolution();
+    });
+  }
+
   displaySelect.addEventListener("change", function () {
     console.debug("rd: select display", displaySelect.value);
     sendCmd("desktop_select_display", {
@@ -364,6 +379,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     if (qualitySlider) {
       pushQuality(qualitySlider.value);
     }
+    pushResolution();
     desiredStreaming = true;
     lastFrameAt = 0;
     resetH264SessionState();

@@ -5,6 +5,7 @@ package capture
 import (
 	"image"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -30,6 +31,8 @@ var (
 	procDeleteObject           = gdi32.NewProc("DeleteObject")
 	procSelectObject           = gdi32.NewProc("SelectObject")
 	procBitBlt                 = gdi32.NewProc("BitBlt")
+	procStretchBlt             = gdi32.NewProc("StretchBlt")
+	procSetStretchBltMode      = gdi32.NewProc("SetStretchBltMode")
 	procSetProcessDpiAwareness = shcore.NewProc("SetProcessDpiAwareness")
 )
 
@@ -45,6 +48,7 @@ const (
 	BI_RGB                        = 0
 	DIB_RGB_COLORS                = 0
 	PROCESS_PER_MONITOR_DPI_AWARE = 2
+	COLORONCOLOR                  = 3
 )
 
 type bitmapInfoHeader struct {
@@ -122,8 +126,22 @@ func bitBlt(hdcDest uintptr, x, y, cx, cy int32, hdcSrc uintptr, x1, y1 int32, r
 	return r != 0
 }
 
+func stretchBlt(hdcDest uintptr, xDest, yDest, wDest, hDest int32, hdcSrc uintptr, xSrc, ySrc, wSrc, hSrc int32, rop uint32) bool {
+	r, _, _ := procStretchBlt.Call(hdcDest, uintptr(xDest), uintptr(yDest), uintptr(wDest), uintptr(hDest), hdcSrc, uintptr(xSrc), uintptr(ySrc), uintptr(wSrc), uintptr(hSrc), uintptr(rop))
+	return r != 0
+}
+
+func setStretchBltMode(hdc uintptr, mode int32) {
+	_, _, _ = procSetStretchBltMode.Call(hdc, uintptr(mode))
+}
+
 func bitBltWithFallback(hdcMem, hdcScreen uintptr, bounds image.Rectangle, w, h int) bool {
 	return bitBlt(hdcMem, 0, 0, int32(w), int32(h), hdcScreen, int32(bounds.Min.X), int32(bounds.Min.Y), SRCCOPY)
+}
+
+func stretchBltCapture(hdcMem, hdcScreen uintptr, bounds image.Rectangle, srcW, srcH, dstW, dstH int) bool {
+	setStretchBltMode(hdcMem, COLORONCOLOR)
+	return stretchBlt(hdcMem, 0, 0, int32(dstW), int32(dstH), hdcScreen, int32(bounds.Min.X), int32(bounds.Min.Y), int32(srcW), int32(srcH), SRCCOPY)
 }
 
 var dpiAwareOnce sync.Once
@@ -144,6 +162,8 @@ var (
 	lastCaptureLogNs atomic.Int64
 	scaleOnce        sync.Once
 	cachedScale      float64
+	maxResHeight     atomic.Int64 // 0 = default (1080), -1 = native, >0 = specific max height
+	lastCapScale     atomic.Uint64
 	state            capState
 	captureMu        sync.Mutex
 )
@@ -199,7 +219,7 @@ func captureDisplayBitBlt(display int) (*image.RGBA, error) {
 		}
 	}
 
-	userScale := captureScale()
+	userScale := effectiveScale(srcW, srcH)
 	dstW := int(float64(srcW) * userScale)
 	dstH := int(float64(srcH) * userScale)
 	if dstW <= 0 || dstH <= 0 {
@@ -207,8 +227,13 @@ func captureDisplayBitBlt(display int) (*image.RGBA, error) {
 		dstH = srcH
 	}
 
+	useStretch := dstW > 0 && dstH > 0 && (dstW < srcW || dstH < srcH) && !cursorCaptureEnabled.Load()
 	capW := srcW
 	capH := srcH
+	if useStretch {
+		capW = dstW
+		capH = dstH
+	}
 
 	hdcScreen := createDisplayDC()
 	fromCreateDC := hdcScreen != 0
@@ -242,18 +267,32 @@ func captureDisplayBitBlt(display int) (*image.RGBA, error) {
 		}
 
 		bitStart := time.Now()
-		if !bitBltWithFallback(hdcMem, hdcScreen, bounds, capW, capH) {
+		var captured bool
+		if useStretch {
+			captured = stretchBltCapture(hdcMem, hdcScreen, bounds, srcW, srcH, capW, capH)
+		} else {
+			captured = bitBltWithFallback(hdcMem, hdcScreen, bounds, capW, capH)
+		}
+		if !captured {
 			state.reset()
 			hdcMem, _, buf, stride, err = state.ensure(hdcScreen, capW, capH)
 			if err != nil {
 				return nil, 0, 0, 0, err
 			}
-			if !bitBltWithFallback(hdcMem, hdcScreen, bounds, capW, capH) {
+			if useStretch {
+				captured = stretchBltCapture(hdcMem, hdcScreen, bounds, srcW, srcH, capW, capH)
+			} else {
+				captured = bitBltWithFallback(hdcMem, hdcScreen, bounds, capW, capH)
+			}
+			if !captured {
 				return nil, 0, 0, 0, syscall.EINVAL
 			}
 		}
 		bitDur := time.Since(bitStart)
-		cursorDrawn := DrawCursorOnDC(hdcMem, bounds)
+		cursorDrawn := false
+		if !useStretch {
+			cursorDrawn = DrawCursorOnDC(hdcMem, bounds)
+		}
 
 		if len(buf) == 0 {
 			return nil, 0, 0, 0, syscall.EINVAL
@@ -266,7 +305,7 @@ func captureDisplayBitBlt(display int) (*image.RGBA, error) {
 		img := &image.RGBA{Pix: buf, Stride: stride, Rect: image.Rect(0, 0, capW, capH)}
 		convDur := time.Since(convStart)
 
-		if !cursorDrawn {
+		if !useStretch && !cursorDrawn {
 			DrawCursorOnImage(img, bounds)
 		}
 		if dstW != capW || dstH != capH {
@@ -372,18 +411,22 @@ func resizeNearest(src *image.RGBA, w, h int) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 	srcW := src.Bounds().Dx()
 	srcH := src.Bounds().Dy()
+	if srcW <= 0 || srcH <= 0 || w <= 0 || h <= 0 {
+		return dst
+	}
+	xOff := make([]int, w)
+	for x := 0; x < w; x++ {
+		xOff[x] = (x * srcW / w) * 4
+	}
+	srcPix := src.Pix
+	dstPix := dst.Pix
+	srcStride := src.Stride
+	dstStride := dst.Stride
 	for y := 0; y < h; y++ {
-		sy := y * srcH / h
-		sp := sy * src.Stride
-		dp := y * dst.Stride
+		sp := (y * srcH / h) * srcStride
+		dp := y * dstStride
 		for x := 0; x < w; x++ {
-			sx := x * srcW / w
-			s := sp + sx*4
-			d := dp + x*4
-			dst.Pix[d+0] = src.Pix[s+0]
-			dst.Pix[d+1] = src.Pix[s+1]
-			dst.Pix[d+2] = src.Pix[s+2]
-			dst.Pix[d+3] = src.Pix[s+3]
+			*(*uint32)(unsafe.Pointer(&dstPix[dp+x*4])) = *(*uint32)(unsafe.Pointer(&srcPix[sp+xOff[x]]))
 		}
 	}
 	return dst
@@ -471,4 +514,40 @@ func captureScale() float64 {
 		cachedScale = s
 	})
 	return cachedScale
+}
+
+func effectiveScale(srcW, srcH int) float64 {
+	s := captureScale()
+	maxH := int(maxResHeight.Load())
+	if maxH == 0 {
+		maxH = 1080
+	} else if maxH < 0 {
+		storeLastScale(s)
+		return s
+	}
+	if srcH > maxH {
+		resCap := float64(maxH) / float64(srcH)
+		if resCap < s {
+			s = resCap
+		}
+	}
+	storeLastScale(s)
+	return s
+}
+
+func storeLastScale(s float64) {
+	lastCapScale.Store(math.Float64bits(s))
+}
+
+func SetMaxResolution(maxH int) {
+	maxResHeight.Store(int64(maxH))
+	log.Printf("capture: max resolution set to %d", maxH)
+}
+
+func EffectiveScaleForInput() float64 {
+	bits := lastCapScale.Load()
+	if bits == 0 {
+		return 1.0
+	}
+	return math.Float64frombits(bits)
 }

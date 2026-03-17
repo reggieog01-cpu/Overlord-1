@@ -730,7 +730,7 @@ func hvncCaptureDisplayOnThread(display int) (*image.RGBA, error) {
 		return nil, syscall.EINVAL
 	}
 
-	userScale := captureScale()
+	userScale := effectiveScale(srcW, srcH)
 	dstW := int(float64(srcW) * userScale)
 	dstH := int(float64(srcH) * userScale)
 	if dstW <= 0 || dstH <= 0 {
