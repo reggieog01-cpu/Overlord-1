@@ -11,6 +11,8 @@ import {
   isIpBanned,
   listBannedIps,
   listClients,
+  listDistinctCountries,
+  setClientBookmark,
   setClientNickname,
   setClientTag,
   setOnlineState,
@@ -71,8 +73,9 @@ export async function handleClientRoutes(
     const sort = url.searchParams.get("sort") || "last_seen_desc";
     const statusFilter = url.searchParams.get("status") || "all";
     const osFilter = url.searchParams.get("os") || "all";
+    const countryFilter = url.searchParams.get("country") || "all";
     if (user.role === "admin") {
-      const result = listClients({ page, pageSize, search, sort, statusFilter, osFilter });
+      const result = listClients({ page, pageSize, search, sort, statusFilter, osFilter, countryFilter });
       return Response.json(result, { headers: deps.CORS_HEADERS });
     }
 
@@ -100,10 +103,18 @@ export async function handleClientRoutes(
       sort,
       statusFilter,
       osFilter,
+      countryFilter,
       allowedClientIds,
       deniedClientIds,
     });
     return Response.json(result, { headers: deps.CORS_HEADERS });
+  }
+
+  if (url.pathname === "/api/clients/countries") {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    const countries = listDistinctCountries();
+    return Response.json({ countries }, { headers: deps.CORS_HEADERS });
   }
 
   if (url.pathname === "/api/clients/banned-ips") {
@@ -396,6 +407,35 @@ export async function handleClientRoutes(
       { ok: true, tag: normalizedTag, note: note ?? null },
       { headers: deps.CORS_HEADERS },
     );
+  }
+
+  const bookmarkMatch = url.pathname.match(/^\/api\/clients\/([^/]+)\/bookmark$/);
+  if (req.method === "PATCH" && bookmarkMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+
+    const targetId = bookmarkMatch[1];
+    if (!canUserAccessClient(user.userId, user.role, targetId)) {
+      return new Response("Forbidden: Client access denied", { status: 403 });
+    }
+    if (!clientExists(targetId)) {
+      return Response.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const bookmarked = !!body?.bookmarked;
+    const updated = setClientBookmark(targetId, bookmarked);
+    if (!updated) {
+      return Response.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    return Response.json({ ok: true, bookmarked }, { headers: deps.CORS_HEADERS });
   }
 
   if (req.method === "POST") {

@@ -25,6 +25,7 @@ export async function loadWithOptions(options = {}) {
       sort: state.sort,
       status: state.filterStatus || "all",
       os: state.filterOs || "all",
+      country: state.filterCountry || "all",
     });
     const res = await fetch(`/api/clients?${params.toString()}`);
     if (!res.ok) throw new Error(`status ${res.status}`);

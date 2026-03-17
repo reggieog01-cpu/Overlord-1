@@ -10,6 +10,7 @@ import {
   requestPreview,
   requestThumbnail,
 } from "./data.js";
+import { initCountryPicker } from "./country-picker.js";
 
 const grid = document.getElementById("grid");
 const totalPill = document.getElementById("total-pill");
@@ -440,6 +441,13 @@ filterStatusSelect?.addEventListener("change", (e) => {
 
 filterOsSelect?.addEventListener("change", (e) => {
   state.filterOs = e.target.value;
+  state.page = 1;
+  state.lastDigest = "";
+  loadWithOptions({ force: true });
+});
+
+initCountryPicker((code) => {
+  state.filterCountry = code;
   state.page = 1;
   state.lastDigest = "";
   loadWithOptions({ force: true });

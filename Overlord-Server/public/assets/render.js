@@ -212,6 +212,7 @@ export function createRenderer({
     card.dataset.os = String(client.os || "").toLowerCase();
     card.dataset.nickname = String(client.nickname || "");
     card.dataset.customTag = String(client.customTag || "");
+    card.dataset.bookmarked = String(!!client.bookmarked);
     card._customTagNote = String(client.customTagNote || "");
     const os = osBadge(client.os || "unknown");
     const arch = archBadge(client.arch || "");
@@ -226,7 +227,7 @@ export function createRenderer({
     const hasTagNote = customTag.length > 0 && customTagNote.length > 0;
     const isTagNoteExpanded = hasTagNote && wasTagNoteExpanded;
     card.dataset.tagNoteExpanded = isTagNoteExpanded ? "true" : "false";
-    card.className = `card rounded-xl border border-slate-800 bg-slate-900/70 p-4 shadow-lg ${client.online ? "" : "card-offline"} tone-${os.tone}`;
+    card.className = `card rounded-xl border ${client.bookmarked ? "border-yellow-600/60" : "border-slate-800"} bg-slate-900/70 p-4 shadow-lg ${client.online ? "" : "card-offline"} tone-${os.tone}`;
     const cardThumb = client.thumbnail
       ? (() => {
           const wrapper = document.createElement("div");
@@ -278,6 +279,7 @@ export function createRenderer({
           </div>
         </div>
         <div class="flex items-center gap-3">
+          <button class="bookmark-btn inline-flex items-center justify-center w-9 h-9 rounded-lg border ${client.bookmarked ? "border-yellow-600 bg-yellow-900/50 text-yellow-300" : "border-slate-700 bg-slate-800/50 text-slate-500 hover:text-yellow-300 hover:border-yellow-700"} transition-colors" data-id="${escapeHtml(client.id)}" title="${client.bookmarked ? "Remove bookmark" : "Bookmark"}"><i class="fa-${client.bookmarked ? "solid" : "regular"} fa-star"></i></button>
           <span class="text-emerald-300 font-mono text-sm inline-flex items-center gap-2"><i class="fa-solid fa-satellite-dish"></i> ${formatPing(client.pingMs)}</span>
           ${isViewer ? "" : `<button class="command-btn inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-slate-800/70 hover:bg-slate-700" data-id="${escapeHtml(client.id)}"><i class="fa-solid fa-bars"></i> Commands</button>`}
           ${isViewer ? "" : `<button class="ban-btn inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-800 bg-red-900/60 hover:bg-red-800 text-red-100" data-id="${escapeHtml(client.id)}"><i class="fa-solid fa-ban"></i> Ban</button>`}
@@ -322,6 +324,41 @@ export function createRenderer({
         }
       });
     }
+
+    card.querySelector(".bookmark-btn")?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const id = btn.dataset.id;
+      const isBookmarked = card.dataset.bookmarked === "true";
+      try {
+        const res = await fetch(`/api/clients/${id}/bookmark`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookmarked: !isBookmarked }),
+        });
+        if (res.ok) {
+          card.dataset.bookmarked = String(!isBookmarked);
+          const icon = btn.querySelector("i");
+          if (!isBookmarked) {
+            btn.classList.remove("border-slate-700", "bg-slate-800/50", "text-slate-500");
+            btn.classList.add("border-yellow-600", "bg-yellow-900/50", "text-yellow-300");
+            card.classList.remove("border-slate-800");
+            card.classList.add("border-yellow-600/60");
+            if (icon) { icon.classList.remove("fa-regular"); icon.classList.add("fa-solid"); }
+            btn.title = "Remove bookmark";
+          } else {
+            btn.classList.remove("border-yellow-600", "bg-yellow-900/50", "text-yellow-300");
+            btn.classList.add("border-slate-700", "bg-slate-800/50", "text-slate-500");
+            card.classList.remove("border-yellow-600/60");
+            card.classList.add("border-slate-800");
+            if (icon) { icon.classList.remove("fa-solid"); icon.classList.add("fa-regular"); }
+            btn.title = "Bookmark";
+          }
+        }
+      } catch (err) {
+        console.error("bookmark toggle failed", err);
+      }
+    });
 
     card.querySelector(".client-tag-toggle")?.addEventListener("click", (e) => {
       e.stopPropagation();

@@ -31,6 +31,7 @@ export type ListFilters = {
   sort: string;
   statusFilter?: string;
   osFilter?: string;
+  countryFilter?: string;
   allowedClientIds?: string[];
   deniedClientIds?: string[];
 };
