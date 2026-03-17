@@ -560,7 +560,9 @@ export function handleHVNCViewerMessage(ws: ServerWebSocket<SocketData>, raw: st
   switch (payload.type) {
     case "hvnc_start":
       if (!state.isStreaming) {
-        sendHVNCCommand(target, "hvnc_start", {});
+        sendHVNCCommand(target, "hvnc_start", {
+          autoStartExplorer: payload.autoStartExplorer !== false,
+        });
         state.isStreaming = true;
         hvncStreamingState.set(clientId, state);
         logger.debug(`[hvnc] started streaming for client ${clientId}`);

