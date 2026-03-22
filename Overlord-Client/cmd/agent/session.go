@@ -505,6 +505,10 @@ func runSession(ctx context.Context, cancel context.CancelFunc, conn *websocket.
 			switch ackType {
 			case "hello_ack":
 				log.Printf("[purgatory] approved, proceeding with session")
+
+				if err := handlers.HandleHelloAck(ackCtx, env, ackEnvelope); err != nil {
+					log.Printf("[purgatory] hello_ack handler error: %v", err)
+				}
 			case "enrollment_status":
 				status, _ := ackEnvelope["status"].(string)
 				log.Printf("[purgatory] server returned status=%s", status)
