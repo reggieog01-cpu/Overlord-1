@@ -14,6 +14,48 @@ import { metrics } from "./metrics";
 const MAX_PING_RTT_MS = 15_000;
 const CLIENT_DB_SYNC_INTERVAL_MS = Number(process.env.OVERLORD_CLIENT_DB_SYNC_MS || 5000);
 const lastClientDbSync = new Map<string, number>();
+const pendingClientDbUpdates = new Map<
+  string,
+  Partial<ClientInfo> & {
+    id: string;
+    lastSeen?: number;
+    online?: number;
+  }
+>();
+
+function queueClientDbUpdate(
+  partial: Partial<ClientInfo> & {
+    id: string;
+    lastSeen?: number;
+    online?: number;
+  },
+): void {
+  const existing = pendingClientDbUpdates.get(partial.id);
+  if (!existing) {
+    pendingClientDbUpdates.set(partial.id, { ...partial });
+    return;
+  }
+  pendingClientDbUpdates.set(partial.id, {
+    ...existing,
+    ...partial,
+    id: partial.id,
+    lastSeen: partial.lastSeen ?? existing.lastSeen,
+    online: partial.online ?? existing.online,
+    pingMs: partial.pingMs ?? existing.pingMs,
+  });
+}
+
+function flushQueuedClientDbUpdates(): void {
+  if (pendingClientDbUpdates.size === 0) {
+    return;
+  }
+  for (const update of pendingClientDbUpdates.values()) {
+    upsertClientRow(update);
+  }
+  pendingClientDbUpdates.clear();
+}
+
+setInterval(flushQueuedClientDbUpdates, CLIENT_DB_SYNC_INTERVAL_MS);
 
 function shouldSyncClientToDb(clientId: string, now: number): boolean {
   const last = lastClientDbSync.get(clientId) || 0;
@@ -26,6 +68,7 @@ function shouldSyncClientToDb(clientId: string, now: number): boolean {
 
 export function clearClientSyncState(clientId: string): void {
   lastClientDbSync.delete(clientId);
+  pendingClientDbUpdates.delete(clientId);
 }
 
 export function handleHello(
@@ -81,7 +124,7 @@ export function handlePing(info: ClientInfo, payload: WireMessage, ws: any) {
   info.lastSeen = now;
   info.online = true;
   if (shouldSyncClientToDb(info.id, now)) {
-    upsertClientRow({
+    queueClientDbUpdate({
       id: info.id,
       lastSeen: info.lastSeen,
       online: 1,
@@ -136,7 +179,7 @@ export function handlePong(info: ClientInfo, payload: WireMessage) {
 
   if (rtt >= 0 && rtt < maxRttMs) {
     info.pingMs = rtt;
-    upsertClientRow({
+    queueClientDbUpdate({
       id: info.id,
       pingMs: info.pingMs,
       lastSeen: info.lastSeen,
@@ -147,7 +190,7 @@ export function handlePong(info: ClientInfo, payload: WireMessage) {
     metrics.recordPing(rtt);
   } else {
     if (shouldSyncClientToDb(info.id, nowTs)) {
-      upsertClientRow({
+      queueClientDbUpdate({
         id: info.id,
         lastSeen: info.lastSeen,
         online: 1,
@@ -192,14 +235,16 @@ export function handleFrame(info: ClientInfo, payload: any) {
 
   if (safeFormat) {
     const now = Date.now();
-    setLatestFrame(info.id, bytes, safeFormat);
-    if (consumeThumbnailRequest(info.id) || !getThumbnail(info.id)) {
-      generateThumbnail(info.id);
+    const thumbnailRequested = consumeThumbnailRequest(info.id);
+    const hasThumbnail = Boolean(getThumbnail(info.id));
+    if (thumbnailRequested || !hasThumbnail) {
+      setLatestFrame(info.id, bytes, safeFormat);
+      void generateThumbnail(info.id);
     }
     info.lastSeen = now;
     info.online = true;
     if (shouldSyncClientToDb(info.id, now)) {
-      upsertClientRow({ id: info.id, lastSeen: now, online: 1 });
+      queueClientDbUpdate({ id: info.id, lastSeen: now, online: 1 });
     }
   }
 }

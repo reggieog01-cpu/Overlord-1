@@ -108,6 +108,27 @@ class MetricsCollector {
   private eventLoopDelays: number[] = [];
   private maxEventLoopHistory: number = 300;
 
+  private pruneTimestampWindow(list: number[], minTs: number): void {
+    let removeCount = 0;
+    while (removeCount < list.length && list[removeCount] <= minTs) {
+      removeCount += 1;
+    }
+    if (removeCount > 0) {
+      list.splice(0, removeCount);
+    }
+  }
+
+  private countRecent(list: number[], minTs: number): number {
+    let count = 0;
+    for (let index = list.length - 1; index >= 0; index -= 1) {
+      if (list[index] <= minTs) {
+        break;
+      }
+      count += 1;
+    }
+    return count;
+  }
+
   constructor() {
     setInterval(() => this.updateBandwidthRates(), 1000);
 
@@ -126,15 +147,13 @@ class MetricsCollector {
 
   recordCommand(type: string) {
     this.commandCount++;
-    this.commandTimestamps.push(Date.now());
+    const now = Date.now();
+    this.commandTimestamps.push(now);
 
     const count = this.commandTypeCount.get(type) || 0;
     this.commandTypeCount.set(type, count + 1);
 
-    const oneHourAgo = Date.now() - 3600000;
-    this.commandTimestamps = this.commandTimestamps.filter(
-      (ts) => ts > oneHourAgo,
-    );
+    this.pruneTimestampWindow(this.commandTimestamps, now - 3600000);
   }
 
   recordBytesSent(bytes: number) {
@@ -173,9 +192,14 @@ class MetricsCollector {
       return { min: null, max: null, avg: null, count: 0 };
     }
 
-    const min = Math.min(...this.pingValues);
-    const max = Math.max(...this.pingValues);
-    const sum = this.pingValues.reduce((a, b) => a + b, 0);
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    let sum = 0;
+    for (const ping of this.pingValues) {
+      if (ping < min) min = ping;
+      if (ping > max) max = ping;
+      sum += ping;
+    }
     const avg = sum / this.pingValues.length;
 
     return { min, max, avg, count: this.pingValues.length };
@@ -201,8 +225,10 @@ class MetricsCollector {
     this.httpTotal++;
     const now = Date.now();
     this.httpTimestamps.push(now);
+    this.pruneTimestampWindow(this.httpTimestamps, now - 60000);
     if (statusCode >= 400) {
       this.httpErrorTimestamps.push(now);
+      this.pruneTimestampWindow(this.httpErrorTimestamps, now - 60000);
     }
     if (Number.isFinite(durationMs)) {
       this.httpLatencies.push(durationMs);
@@ -253,25 +279,20 @@ class MetricsCollector {
     const oneMinuteAgo = now - 60000;
     const oneHourAgo = now - 3600000;
 
-    const commandsLastMinute = this.commandTimestamps.filter(
-      (ts) => ts > oneMinuteAgo,
-    ).length;
-    const commandsLastHour = this.commandTimestamps.filter(
-      (ts) => ts > oneHourAgo,
-    ).length;
+    this.pruneTimestampWindow(this.commandTimestamps, oneHourAgo);
+    this.pruneTimestampWindow(this.httpTimestamps, oneMinuteAgo);
+    this.pruneTimestampWindow(this.httpErrorTimestamps, oneMinuteAgo);
+
+    const commandsLastMinute = this.countRecent(this.commandTimestamps, oneMinuteAgo);
+    const commandsLastHour = this.commandTimestamps.length;
 
     const commandsByType: Record<string, number> = {};
     for (const [type, count] of this.commandTypeCount.entries()) {
       commandsByType[type] = count;
     }
 
-    const oneMinuteAgoForHttp = now - 60000;
-    const httpLastMinute = this.httpTimestamps.filter(
-      (ts) => ts > oneMinuteAgoForHttp,
-    ).length;
-    const httpErrorsLastMinute = this.httpErrorTimestamps.filter(
-      (ts) => ts > oneMinuteAgoForHttp,
-    ).length;
+    const httpLastMinute = this.httpTimestamps.length;
+    const httpErrorsLastMinute = this.httpErrorTimestamps.length;
 
     const httpLatencySamples = [...this.httpLatencies].sort((a, b) => a - b);
     const httpLatencyAvg = httpLatencySamples.length

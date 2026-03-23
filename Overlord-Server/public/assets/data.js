@@ -10,6 +10,31 @@ let dashboardWs = null;
 let dashboardWsConnected = false;
 let wsReconnectTimer = null;
 
+function moveClientCardImmediately(msg) {
+  const clientId = typeof msg?.clientId === "string" ? msg.clientId : "";
+  if (!clientId) return;
+  const selectorId =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(clientId)
+      : clientId;
+  const grid = document.getElementById("grid");
+  const card = grid?.querySelector(`article[data-id="${selectorId}"]`);
+  if (!grid || !card) return;
+
+  if (msg.event === "client_online") {
+    card.dataset.online = "true";
+    card.classList.remove("card-offline");
+    grid.prepend(card);
+    return;
+  }
+
+  if (msg.event === "client_offline") {
+    card.dataset.online = "false";
+    card.classList.add("card-offline");
+    grid.appendChild(card);
+  }
+}
+
 export function registerRenderer(fn) {
   render = fn;
 }
@@ -128,6 +153,11 @@ function connectDashboardWs() {
     try {
       const msg = typeof event.data === "string" ? JSON.parse(event.data) : null;
       if (msg && msg.type === "clients_changed") {
+        loadWithOptions({ force: false, reorder: true });
+        return;
+      }
+      if (msg && msg.type === "client_event") {
+        moveClientCardImmediately(msg);
         loadWithOptions({ force: false, reorder: true });
       }
     } catch {}

@@ -429,24 +429,25 @@ export function listClients(filters: ListFilters): ListResult {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const orderBy = (() => {
+    const online = "online DESC";
     const bookmark = "bookmarked DESC";
     switch (sort) {
       case "stable":
-        return `ORDER BY ${bookmark}, online DESC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, id ASC`;
       case "ping_asc":
-        return `ORDER BY ${bookmark}, ping_ms IS NULL, ping_ms ASC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, ping_ms IS NULL, ping_ms ASC, id ASC`;
       case "ping_desc":
-        return `ORDER BY ${bookmark}, ping_ms IS NULL, ping_ms DESC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, ping_ms IS NULL, ping_ms DESC, id ASC`;
       case "host_asc":
-        return `ORDER BY ${bookmark}, LOWER(COALESCE(nickname, host)) ASC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(nickname, host)) ASC, id ASC`;
       case "host_desc":
-        return `ORDER BY ${bookmark}, LOWER(COALESCE(nickname, host)) DESC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(nickname, host)) DESC, id ASC`;
       case "country_asc":
-        return `ORDER BY ${bookmark}, LOWER(COALESCE(country, 'zz')) ASC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) ASC, id ASC`;
       case "country_desc":
-        return `ORDER BY ${bookmark}, LOWER(COALESCE(country, 'zz')) DESC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) DESC, id ASC`;
       default:
-        return `ORDER BY ${bookmark}, last_seen DESC, id ASC`;
+        return `ORDER BY ${online}, ${bookmark}, last_seen DESC, id ASC`;
     }
   })();
 

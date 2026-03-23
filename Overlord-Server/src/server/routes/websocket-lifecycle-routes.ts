@@ -86,6 +86,10 @@ type WsLifecycleDeps = {
   notifyRemoteDesktopStatus: (clientId: string, status: string, reason?: string) => void;
   handleBuildTagConnection: (clientId: string, buildTag: string) => void;
   notifyDashboard: () => void;
+  notifyDashboardClientEvent: (
+    event: "client_online" | "client_offline" | "client_purgatory",
+    info: { id: string; host?: string; user?: string; os?: string; ip?: string; country?: string },
+  ) => void;
   broadcastClientEvent: (
     event: "client_online" | "client_offline" | "client_purgatory",
     info: { id: string; host?: string; user?: string; os?: string; ip?: string; country?: string },
@@ -300,6 +304,14 @@ export async function handleWebSocketMessage(
           logger.info(`[purgatory] client ${resolvedId} is pending approval`);
           ws.send(encodeMessage({ type: "enrollment_status", status: "pending" }));
           deps.notifyDashboard();
+          deps.notifyDashboardClientEvent("client_purgatory", {
+            id: resolvedId,
+            host: (payload as any).host || undefined,
+            user: (payload as any).user || undefined,
+            os: (payload as any).os || undefined,
+            ip: ip || undefined,
+            country,
+          });
           deps.broadcastClientEvent("client_purgatory", {
             id: resolvedId,
             host: (payload as any).host || undefined,
@@ -361,7 +373,16 @@ export async function handleWebSocketMessage(
         clientManager.addClient(infoObj.id, infoObj);
 
         deps.dispatchAutoScriptsForConnection(infoObj, ws);
-        deps.notifyDashboard();          deps.broadcastClientEvent("client_online", {
+        deps.notifyDashboard();
+        deps.notifyDashboardClientEvent("client_online", {
+            id: infoObj.id,
+            host: infoObj.host,
+            user: infoObj.user,
+            os: infoObj.os,
+            ip: infoObj.ip,
+            country: infoObj.country,
+          });
+        deps.broadcastClientEvent("client_online", {
             id: infoObj.id,
             host: infoObj.host,
             user: infoObj.user,
@@ -618,14 +639,14 @@ export function handleWebSocketClose(
 
   if (role === "file_browser_viewer") {
     if (sessionId) {
-      sessionManager.getAllFileBrowserSessions().delete(sessionId);
+      sessionManager.deleteFileBrowserSession(sessionId);
     }
     return;
   }
 
   if (role === "process_viewer") {
     if (sessionId) {
-      sessionManager.getAllProcessSessions().delete(sessionId);
+      sessionManager.deleteProcessSession(sessionId);
     }
     return;
   }
@@ -661,6 +682,14 @@ export function handleWebSocketClose(
   }
 
   if (role === "client" && currentClient) {
+    deps.notifyDashboardClientEvent("client_offline", {
+      id: clientId,
+      host: currentClient.host,
+      user: currentClient.user,
+      os: currentClient.os,
+      ip: currentClient.ip,
+      country: currentClient.country,
+    });
     deps.broadcastClientEvent("client_offline", {
       id: clientId,
       host: currentClient.host,

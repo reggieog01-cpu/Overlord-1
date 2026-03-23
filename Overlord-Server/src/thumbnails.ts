@@ -1,5 +1,15 @@
+import sharp from "sharp";
+
+const THUMBNAIL_WIDTH = Math.max(64, Number(process.env.OVERLORD_THUMBNAIL_WIDTH || 1920));
+const THUMBNAIL_HEIGHT = Math.max(48, Number(process.env.OVERLORD_THUMBNAIL_HEIGHT || 1080));
+const THUMBNAIL_QUALITY = Math.min(90, Math.max(40, Number(process.env.OVERLORD_THUMBNAIL_QUALITY || 72)));
+const MAX_THUMBNAIL_SOURCE_BYTES = Math.max(
+  256 * 1024,
+  Number(process.env.OVERLORD_THUMBNAIL_MAX_SOURCE_BYTES || 16 * 1024 * 1024),
+);
+
 const thumbnails = new Map<string, string>();
-const latestFrames = new Map<string, { bytes: Uint8Array; format: string }>();
+const latestFrames = new Map<string, { bytes: Uint8Array; format: string; capturedAt: number }>();
 const thumbnailRequests = new Map<string, number>();
 
 export function setThumbnail(id: string, dataUrl: string) {
@@ -17,20 +27,55 @@ export function clearThumbnail(id: string) {
 }
 
 export function setLatestFrame(id: string, bytes: Uint8Array, format: string) {
-  latestFrames.set(id, { bytes, format });
+  if (!bytes || bytes.byteLength === 0 || bytes.byteLength > MAX_THUMBNAIL_SOURCE_BYTES) {
+    latestFrames.delete(id);
+    return;
+  }
+  latestFrames.set(id, { bytes, format, capturedAt: Date.now() });
 }
 
-export function generateThumbnail(id: string): boolean {
+async function buildThumbnailDataUrl(bytes: Uint8Array, format: string): Promise<string | null> {
+  if (!bytes || bytes.byteLength === 0) {
+    return null;
+  }
+
+  const inputFormat = format === "jpg" ? "jpeg" : format;
+  if (!["jpeg", "webp"].includes(inputFormat)) {
+    return null;
+  }
+
+  const output = await sharp(Buffer.from(bytes), { failOn: "none" })
+    .rotate()
+    .resize({
+      width: THUMBNAIL_WIDTH,
+      height: THUMBNAIL_HEIGHT,
+      fit: "inside",
+      withoutEnlargement: true,
+      fastShrinkOnLoad: true,
+    })
+    .webp({ quality: THUMBNAIL_QUALITY })
+    .toBuffer();
+
+  return `data:image/webp;base64,${output.toString("base64")}`;
+}
+
+export async function generateThumbnail(id: string): Promise<boolean> {
   const frameData = latestFrames.get(id);
   if (!frameData) {
     return false;
   }
-  
-  const { bytes, format } = frameData;
-  const b64 = Buffer.from(bytes).toString("base64");
-  const mime = format === "webp" ? "image/webp" : "image/jpeg";
-  thumbnails.set(id, `data:${mime};base64,${b64}`);
-  return true;
+
+  try {
+    const dataUrl = await buildThumbnailDataUrl(frameData.bytes, frameData.format);
+    if (!dataUrl) {
+      return false;
+    }
+    thumbnails.set(id, dataUrl);
+    latestFrames.delete(id);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function markThumbnailRequested(id: string) {

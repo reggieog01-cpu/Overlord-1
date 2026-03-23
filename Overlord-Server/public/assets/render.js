@@ -33,6 +33,13 @@ export function createRenderer({
   const TOUCH_MOVE_CANCEL_PX = 10;
   let renderToken = 0;
 
+  function reorderCards(items) {
+    items.forEach((client) => {
+      const card = grid.querySelector(`article[data-id="${client.id}"]`);
+      if (card) grid.appendChild(card);
+    });
+  }
+
   function renderMerge(data, options = {}) {
     const { reorder = false } = options;
     totalPill.textContent = `${data.online ?? data.total} online / ${data.total} total`;
@@ -66,10 +73,7 @@ export function createRenderer({
       .forEach((el) => el.remove());
 
     if (reorder) {
-      items.forEach((client) => {
-        const card = grid.querySelector(`article[data-id="${client.id}"]`);
-        if (card) grid.appendChild(card);
-      });
+      reorderCards(items);
     }
 
     if (newClients.length === 0) {
@@ -101,6 +105,7 @@ export function createRenderer({
         requestAnimationFrame(insertBatch);
         return;
       }
+      reorderCards(items);
     };
 
     insertBatch();

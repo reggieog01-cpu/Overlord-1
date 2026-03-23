@@ -235,10 +235,9 @@ export function stopConsoleOnTarget(target: ClientInfo | undefined, sessionId: s
 }
 
 export function notifyConsoleClosed(clientId: string, reason: string) {
-  for (const [sessionId, session] of sessionManager.getAllConsoleSessions().entries()) {
-    if (session.clientId !== clientId) continue;
+  for (const session of sessionManager.getConsoleSessionsByClient(clientId)) {
     safeSendViewer(session.viewer, { type: "status", status: "closed", reason, sessionId });
-    sessionManager.deleteConsoleSession(sessionId);
+    sessionManager.deleteConsoleSession(session.id);
   }
 }
 

@@ -44,6 +44,15 @@ export interface UserClientAccessRule {
   access: ClientAccessRuleKind;
 }
 
+type UserAccessCacheEntry = {
+  scope: ClientAccessScope;
+  allow: Set<string>;
+  deny: Set<string>;
+};
+
+const userAccessCache = new Map<number, UserAccessCacheEntry>();
+let notificationDeliveryCache: UserDeliveryRow[] | null = null;
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,10 +216,7 @@ export function listUsers(): UserInfo[] {
 }
 
 export function getUserClientAccessScope(userId: number): ClientAccessScope {
-  const row = db
-    .prepare("SELECT client_scope FROM users WHERE id = ?")
-    .get(userId) as { client_scope?: ClientAccessScope } | undefined;
-  return row?.client_scope || "none";
+  return getUserAccessCacheEntry(userId).scope;
 }
 
 export function listUserClientAccessRules(userId: number): UserClientAccessRule[] {
@@ -225,12 +231,54 @@ export function listUserClientRuleIdsByAccess(
   userId: number,
   access: ClientAccessRuleKind,
 ): string[] {
-  return db
+  const entry = getUserAccessCacheEntry(userId);
+  const values = access === "allowlist" ? [] : access === "allow" ? entry.allow : entry.deny;
+  return Array.from(values).sort((left, right) => left.localeCompare(right));
+}
+
+function invalidateUserAccessCache(userId?: number): void {
+  if (userId === undefined) {
+    userAccessCache.clear();
+    return;
+  }
+  userAccessCache.delete(userId);
+}
+
+function invalidateNotificationDeliveryCache(): void {
+  notificationDeliveryCache = null;
+}
+
+function getUserAccessCacheEntry(userId: number): UserAccessCacheEntry {
+  const cached = userAccessCache.get(userId);
+  if (cached) {
+    return cached;
+  }
+
+  const row = db
+    .prepare("SELECT client_scope FROM users WHERE id = ?")
+    .get(userId) as { client_scope?: ClientAccessScope } | undefined;
+  const rules = db
     .prepare(
-      "SELECT client_id as clientId FROM user_client_access_rules WHERE user_id = ? AND access = ? ORDER BY client_id ASC",
+      "SELECT client_id as clientId, access FROM user_client_access_rules WHERE user_id = ?",
     )
-    .all(userId, access)
-    .map((row: { clientId: string }) => row.clientId);
+    .all(userId) as Array<{ clientId: string; access: ClientAccessRuleKind }>;
+
+  const entry: UserAccessCacheEntry = {
+    scope: row?.client_scope || "none",
+    allow: new Set<string>(),
+    deny: new Set<string>(),
+  };
+
+  for (const rule of rules) {
+    if (rule.access === "allow") {
+      entry.allow.add(rule.clientId);
+    } else if (rule.access === "deny") {
+      entry.deny.add(rule.clientId);
+    }
+  }
+
+  userAccessCache.set(userId, entry);
+  return entry;
 }
 
 export function setUserClientAccessScope(
@@ -243,6 +291,7 @@ export function setUserClientAccessScope(
 
   try {
     db.prepare("UPDATE users SET client_scope = ? WHERE id = ?").run(scope, userId);
+    invalidateUserAccessCache(userId);
     return { success: true };
   } catch (err: any) {
     logger.error("[users] setUserClientAccessScope error:", err);
@@ -267,6 +316,7 @@ export function setUserClientAccessRule(
     db.prepare(
       "INSERT OR REPLACE INTO user_client_access_rules (user_id, client_id, access, created_at) VALUES (?, ?, ?, ?)",
     ).run(userId, normalizedClientId, access, Date.now());
+    invalidateUserAccessCache(userId);
     return { success: true };
   } catch (err: any) {
     logger.error("[users] setUserClientAccessRule error:", err);
@@ -283,6 +333,7 @@ export function removeUserClientAccessRule(
       userId,
       clientId,
     );
+    invalidateUserAccessCache(userId);
     return { success: true };
   } catch (err: any) {
     logger.error("[users] removeUserClientAccessRule error:", err);
@@ -297,21 +348,16 @@ export function canUserAccessClient(
 ): boolean {
   if (role === "admin") return true;
 
-  const scope = getUserClientAccessScope(userId);
+  const access = getUserAccessCacheEntry(userId);
+  const scope = access.scope;
   if (scope === "none") return false;
   if (scope === "all") return true;
 
-  const row = db
-    .prepare(
-      "SELECT access FROM user_client_access_rules WHERE user_id = ? AND client_id = ?",
-    )
-    .get(userId, clientId) as { access?: ClientAccessRuleKind } | undefined;
-
   if (scope === "allowlist") {
-    return row?.access === "allow";
+    return access.allow.has(clientId);
   }
   if (scope === "denylist") {
-    return row?.access !== "deny";
+    return !access.deny.has(clientId);
   }
   return false;
 }
@@ -383,6 +429,8 @@ export async function createUser(
       )
       .run(username, passwordHash, role, Date.now(), createdBy, role === "admin" ? "all" : "none", role === "admin" || role === "operator" ? 1 : 0);
 
+    invalidateNotificationDeliveryCache();
+
     return { success: true, userId: result.lastInsertRowid as number };
   } catch (err: any) {
     logger.error("[users] Create user error:", err);
@@ -429,6 +477,8 @@ export function updateUserRole(
       nextScope,
       userId,
     );
+    invalidateUserAccessCache(userId);
+    invalidateNotificationDeliveryCache();
     return { success: true };
   } catch (err: any) {
     console.error("[users] Update role error:", err);
@@ -451,6 +501,8 @@ export function deleteUser(userId: number): {
 
   try {
     db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    invalidateUserAccessCache(userId);
+    invalidateNotificationDeliveryCache();
     return { success: true };
   } catch (err: any) {
     console.error("[users] Delete user error:", err);
@@ -538,6 +590,7 @@ export function setUserTelegramChatId(
 ): { success: boolean; error?: string } {
   try {
     db.prepare("UPDATE users SET telegram_chat_id = ? WHERE id = ?").run(chatId, userId);
+    invalidateNotificationDeliveryCache();
     return { success: true };
   } catch (err: any) {
     logger.error("[users] setUserTelegramChatId error:", err);
@@ -622,6 +675,7 @@ export function updateUserNotificationSettings(
   try {
     values.push(userId);
     db.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    invalidateNotificationDeliveryCache();
     return { success: true };
   } catch (err: any) {
     logger.error("[users] updateUserNotificationSettings error:", err);
@@ -644,7 +698,11 @@ export interface UserDeliveryRow {
 }
 
 export function getUsersForNotificationDelivery(): UserDeliveryRow[] {
-  return db
+  if (notificationDeliveryCache) {
+    return notificationDeliveryCache;
+  }
+
+  notificationDeliveryCache = db
     .prepare(
       `SELECT id, username, role, client_scope,
               webhook_enabled, webhook_url, webhook_template,
@@ -655,4 +713,12 @@ export function getUsersForNotificationDelivery(): UserDeliveryRow[] {
               AND telegram_chat_id IS NOT NULL AND telegram_chat_id != '')`,
     )
     .all() as UserDeliveryRow[];
+
+  return notificationDeliveryCache;
+}
+
+export function getUsersForNotificationDeliveryByClient(clientId: string): UserDeliveryRow[] {
+  return getUsersForNotificationDelivery().filter((user) =>
+    canUserAccessClient(user.id, user.role, clientId),
+  );
 }

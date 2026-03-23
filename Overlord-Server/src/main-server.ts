@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticateRequest } from "./auth";
 import { loadConfig, getConfig } from "./config";
 import { flushAuditLogsSync } from "./auditLog";
-import { getUserById, getUsersForNotificationDelivery, canUserAccessClient, setUserClientAccessRule, setUserClientAccessScope, getUserClientAccessScope } from "./users";
+import { getUserById, getUsersForNotificationDeliveryByClient, canUserAccessClient, setUserClientAccessRule, setUserClientAccessScope, getUserClientAccessScope } from "./users";
 import { requireAuth, requirePermission } from "./rbac";
 import { metrics } from "./metrics";
 import { ensureDataDir } from "./paths";
@@ -233,9 +233,7 @@ const storeNotificationScreenshotForPending = (
 ) => storeNotificationScreenshot(notificationHistory, pending, bytes, format, width, height);
 const deliverNotificationWithScreenshotForRecord = (record: NotificationRecord) => {
   const getUserDeliveryTargets = (clientId: string): UserDeliveryTarget[] => {
-    const deliveryUsers = getUsersForNotificationDelivery();
-    return deliveryUsers
-      .filter((u) => canUserAccessClient(u.id, u.role, clientId))
+    return getUsersForNotificationDeliveryByClient(clientId)
       .map((u) => ({
         userId: u.id,
         username: u.username,
@@ -473,6 +471,7 @@ async function startServer() {
     notifyRemoteDesktopStatus,
     handleBuildTagConnection,
     notifyDashboard: sessionManager.notifyDashboardViewers,
+    notifyDashboardClientEvent: sessionManager.notifyDashboardClientEvent,
     broadcastClientEvent: notificationPluginHandlers.broadcastClientLifecycleEvent,
   };
 

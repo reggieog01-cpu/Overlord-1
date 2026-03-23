@@ -234,7 +234,7 @@ export async function handleClientRoutes(
       );
       metrics.recordCommand("screenshot");
     }
-    const success = generateThumbnail(clientId);
+    const success = await generateThumbnail(clientId);
     return Response.json({ ok: true, updated: success }, { headers: deps.CORS_HEADERS });
   }
 

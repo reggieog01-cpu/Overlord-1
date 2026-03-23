@@ -88,11 +88,9 @@ export function handleVoiceUplink(clientId: string, payload: any) {
         : null;
   if (!bytes || bytes.byteLength === 0) return;
 
-  for (const session of sessionManager.getAllVoiceSessions().values()) {
+  for (const session of sessionManager.getVoiceSessionsByClient(clientId)) {
     if (sessionId) {
       if (session.id !== sessionId) continue;
-    } else if (session.clientId !== clientId) {
-      continue;
     }
     try {
       session.viewer.send(bytes);
