@@ -115,6 +115,7 @@ import {
   handleVoiceViewerOpen,
 } from "./server/ws-voice";
 import { createNotificationPluginHandlers } from "./server/ws-notifications-plugin";
+import { loadOrGenerateVapidKeys } from "./server/web-push";
 import * as clientManager from "./clientManager";
 import * as sessionManager from "./sessions/sessionManager";
 import type { SocketData } from "./sessions/types";
@@ -260,6 +261,7 @@ const notificationPluginHandlers = createNotificationPluginHandlers({
   pluginState,
   getNotificationConfig,
   canUserAccessClient,
+  getUserRole: (userId: number) => getUserById(userId)?.role,
   storeNotificationScreenshot: storeNotificationScreenshotForPending,
   deliverNotificationWithScreenshot: deliverNotificationWithScreenshotForRecord,
   savePluginState,
@@ -526,7 +528,7 @@ async function startServer() {
   
   markAllClientsOffline();
   clearNotificationScreenshots();
-  
+  loadOrGenerateVapidKeys();
   
   deleteExpiredBuilds();
   logger.info(`[db] Cleaned up expired builds`);

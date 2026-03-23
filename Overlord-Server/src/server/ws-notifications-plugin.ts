@@ -7,6 +7,7 @@ import { metrics } from "../metrics";
 import { encodeMessage } from "../protocol";
 import * as sessionManager from "../sessions/sessionManager";
 import type { SocketData } from "../sessions/types";
+import { deliverWebPushClientEvent } from "./notification-delivery";
 
 type NotificationRecord = {
   id: string;
@@ -55,6 +56,7 @@ type CreateDeps = {
   pluginState: { enabled: Record<string, boolean>; lastError: Record<string, string> };
   getNotificationConfig: () => NotificationConfigShape;
   canUserAccessClient: (userId: number, userRole: string, clientId: string) => boolean;
+  getUserRole: (userId: number) => string | undefined;
   storeNotificationScreenshot: (
     pending: PendingNotificationScreenshot,
     bytes: Uint8Array,
@@ -350,6 +352,8 @@ export function createNotificationPluginHandlers(deps: CreateDeps) {
         }
         safeSendViewer(session.viewer, item);
       }
+
+      void deliverWebPushClientEvent(event, info, deps.canUserAccessClient, deps.getUserRole);
     },
 
     markPluginLoaded,

@@ -18,9 +18,7 @@ self.addEventListener("notificationclick", (event) => {
           try {
             const clientUrl = new URL(client.url);
             if (clientUrl.origin === self.location.origin) {
-              if (clientUrl.pathname !== "/notifications") {
-                client.navigate(targetUrl);
-              }
+              client.navigate(targetUrl);
               return client.focus();
             }
           } catch {}
@@ -28,6 +26,29 @@ self.addEventListener("notificationclick", (event) => {
         return self.clients.openWindow(targetUrl);
       }),
   );
+});
+
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let data;
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: "Overlord", body: event.data.text() };
+  }
+
+  const title = String(data.title || "Overlord Notification");
+  const options = {
+    body: String(data.body || ""),
+    icon: "/assets/overlord.png",
+    badge: "/assets/overlord.png",
+    tag: data.tag || `overlord-push-${Date.now()}`,
+    data: { url: data.url || "/notifications" },
+    requireInteraction: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener("message", (event) => {
@@ -40,7 +61,7 @@ self.addEventListener("message", (event) => {
     icon: data.icon || "/assets/overlord.png",
     badge: "/assets/overlord.png",
     tag: data.tag || `overlord-${Date.now()}`,
-    data: { url: "/notifications" },
+    data: { url: data.url || "/notifications" },
     requireInteraction: false,
   };
 

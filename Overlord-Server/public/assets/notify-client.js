@@ -3,6 +3,7 @@ import { decodeMsgpack } from "./msgpack-helpers.js";
 const STORAGE_KEY = "overlord_notifications_enabled";
 const UNREAD_KEY = "overlord_notifications_unread";
 const DESKTOP_NOTIF_KEY = "overlord_desktop_notifications_enabled";
+const PUSH_SUBSCRIBED_KEY = "overlord_push_subscribed";
 const CLIENT_EVENT_KEYS = {
   client_online: "overlord_desktop_notify_client_online",
   client_offline: "overlord_desktop_notify_client_offline",
@@ -27,6 +28,7 @@ if (
 }
 let ws = null;
 let started = false;
+let swRegistration = null;
 let readyHandlers = new Set();
 let notificationHandlers = new Set();
 let statusHandlers = new Set();
@@ -99,6 +101,11 @@ export function getDesktopNotificationsEnabled() {
 
 export function setDesktopNotificationsEnabled(value) {
   localStorage.setItem(DESKTOP_NOTIF_KEY, value ? "1" : "0");
+  if (value) {
+    subscribeToPush();
+  } else {
+    unsubscribeFromPush();
+  }
 }
 
 export function getClientEventNotificationEnabled(eventType) {
@@ -124,20 +131,105 @@ export async function requestDesktopNotificationPermission() {
   }
 }
 
-function fireNotification(title, body, tag, clickUrl) {
-  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.ready
-      .then((reg) =>
-        reg.showNotification(title, {
-          body,
-          icon: "/assets/overlord.png",
-          tag,
-          data: { url: clickUrl || "/notifications" },
-          requireInteraction: false,
-        }),
-      )
-      .catch(() => fireNotificationFallback(title, body, tag, clickUrl));
-    return;
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function getSwRegistration() {
+  if (swRegistration) return swRegistration;
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) return null;
+  try {
+    swRegistration = await navigator.serviceWorker.ready;
+    return swRegistration;
+  } catch {
+    return null;
+  }
+}
+
+async function subscribeToPush() {
+  try {
+    const reg = await getSwRegistration();
+    if (!reg || !reg.pushManager) return;
+
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      if (localStorage.getItem(PUSH_SUBSCRIBED_KEY) === "1") return;
+      await sendSubscriptionToServer(existing);
+      return;
+    }
+
+    const res = await fetch("/api/notifications/vapid-public-key");
+    if (!res.ok) return;
+    const { publicKey } = await res.json();
+    if (!publicKey) return;
+
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+
+    await sendSubscriptionToServer(subscription);
+  } catch (err) {
+    console.warn("[notifications] push subscribe failed", err);
+  }
+}
+
+async function sendSubscriptionToServer(subscription) {
+  try {
+    const res = await fetch("/api/notifications/push-subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+    if (res.ok) {
+      localStorage.setItem(PUSH_SUBSCRIBED_KEY, "1");
+    }
+  } catch (err) {
+    console.warn("[notifications] failed to send push subscription to server", err);
+  }
+}
+
+async function unsubscribeFromPush() {
+  try {
+    const reg = await getSwRegistration();
+    if (!reg || !reg.pushManager) return;
+
+    const subscription = await reg.pushManager.getSubscription();
+    if (!subscription) return;
+
+    await fetch("/api/notifications/push-subscribe", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    }).catch(() => {});
+
+    await subscription.unsubscribe().catch(() => {});
+    localStorage.removeItem(PUSH_SUBSCRIBED_KEY);
+  } catch (err) {
+    console.warn("[notifications] push unsubscribe failed", err);
+  }
+}
+
+async function fireNotification(title, body, tag, clickUrl) {
+  const reg = await getSwRegistration();
+  if (reg) {
+    try {
+      await reg.showNotification(title, {
+        body,
+        icon: "/assets/overlord.png",
+        tag,
+        data: { url: clickUrl || "/notifications" },
+        requireInteraction: false,
+      });
+      return;
+    } catch {}
   }
   fireNotificationFallback(title, body, tag, clickUrl);
 }
@@ -299,6 +391,20 @@ function connect() {
   };
 }
 
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) return null;
+  try {
+    const res = await fetch("/assets/notification-sw.js");
+    if (!res.ok) return null;
+    const reg = await navigator.serviceWorker.register("/assets/notification-sw.js", { scope: "/" });
+    swRegistration = reg;
+    await navigator.serviceWorker.ready;
+    return reg;
+  } catch {
+    return null;
+  }
+}
+
 export async function startNotificationClient() {
   if (started) return;
   started = true;
@@ -309,23 +415,15 @@ export async function startNotificationClient() {
     console.warn("[notifications] failed to load msgpackr", err);
   }
 
-  if ("serviceWorker" in navigator && window.isSecureContext) {
-    fetch("/assets/notification-sw.js")
-      .then((res) => {
-        if (!res.ok) return;
-        navigator.serviceWorker
-          .register("/assets/notification-sw.js", { scope: "/" })
-          .catch(() => { });
-      })
-      .catch(() => {/* SW script unreachable (e.g. self-signed cert) — skip quietly */});
-  }
+  await registerServiceWorker();
 
   if (getDesktopNotificationsEnabled()) {
-    requestDesktopNotificationPermission().then((perm) => {
-      if (perm !== "granted") {
-        setDesktopNotificationsEnabled(false);
-      }
-    });
+    const perm = await requestDesktopNotificationPermission();
+    if (perm !== "granted") {
+      setDesktopNotificationsEnabled(false);
+    } else {
+      subscribeToPush();
+    }
   }
 
   connect();

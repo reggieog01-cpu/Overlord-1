@@ -2,6 +2,7 @@ import { authenticateRequest } from "../../auth";
 import { AuditAction, logAudit } from "../../auditLog";
 import * as clientManager from "../../clientManager";
 import { getConfig, updateNotificationsConfig } from "../../config";
+import { savePushSubscription, deletePushSubscription, getPushSubscriptionsByUser } from "../../db";
 import { encodeMessage } from "../../protocol";
 import {
   getUserNotificationSettings,
@@ -12,6 +13,7 @@ import {
   DEFAULT_TELEGRAM_TEMPLATE,
   renderNotificationTemplate,
 } from "../notification-delivery";
+import { getVapidPublicKey } from "../web-push";
 
 type RequestIpProvider = {
   requestIP: (req: Request) => { address?: string } | null | undefined;
@@ -403,6 +405,64 @@ export async function handleNotificationsConfigRoutes(
         { error: err?.message || "Failed to POST preview webhook" },
         { status: 502 },
       );
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/notifications/vapid-public-key") {
+    const user = await authenticateRequest(req);
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return Response.json({ publicKey: getVapidPublicKey() });
+  }
+
+  if (url.pathname === "/api/notifications/push-subscribe") {
+    const user = await authenticateRequest(req);
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (req.method === "POST") {
+      let body: any = {};
+      try {
+        body = await req.json();
+      } catch {
+        return Response.json({ error: "Invalid JSON" }, { status: 400 });
+      }
+
+      const endpoint = typeof body?.endpoint === "string" ? body.endpoint.trim() : "";
+      const p256dh = typeof body?.keys?.p256dh === "string" ? body.keys.p256dh : "";
+      const auth = typeof body?.keys?.auth === "string" ? body.keys.auth : "";
+
+      if (!endpoint || !p256dh || !auth) {
+        return Response.json({ error: "Missing subscription fields" }, { status: 400 });
+      }
+
+      savePushSubscription(user.userId, endpoint, p256dh, auth);
+      return Response.json({ ok: true });
+    }
+
+    if (req.method === "DELETE") {
+      let body: any = {};
+      try {
+        body = await req.json();
+      } catch {
+        return Response.json({ error: "Invalid JSON" }, { status: 400 });
+      }
+
+      const endpoint = typeof body?.endpoint === "string" ? body.endpoint.trim() : "";
+      if (!endpoint) {
+        return Response.json({ error: "Missing endpoint" }, { status: 400 });
+      }
+
+      deletePushSubscription(endpoint);
+      return Response.json({ ok: true });
     }
   }
 

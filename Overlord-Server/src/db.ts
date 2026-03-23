@@ -143,6 +143,23 @@ db.run(
 );
 
 db.run(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+`);
+db.run(
+  `CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);`,
+);
+db.run(
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);`,
+);
+
+db.run(`
   CREATE TABLE IF NOT EXISTS auto_scripts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -946,6 +963,59 @@ export function getEnrollmentStats(): {
     else stats.pending = Number(r.c);
   }
   return stats;
+}
+
+export interface PushSubscriptionRecord {
+  id: number;
+  userId: number;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: number;
+}
+
+export function savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): void {
+  db.run(
+    `INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    userId, endpoint, p256dh, auth, Date.now(),
+  );
+}
+
+export function deletePushSubscription(endpoint: string): void {
+  db.run(`DELETE FROM push_subscriptions WHERE endpoint=?`, endpoint);
+}
+
+export function deletePushSubscriptionsByUser(userId: number): void {
+  db.run(`DELETE FROM push_subscriptions WHERE user_id=?`, userId);
+}
+
+export function getPushSubscriptionsByUser(userId: number): PushSubscriptionRecord[] {
+  return db
+    .query<any>(`SELECT * FROM push_subscriptions WHERE user_id=?`)
+    .all(userId)
+    .map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      endpoint: r.endpoint,
+      p256dh: r.p256dh,
+      auth: r.auth,
+      createdAt: Number(r.created_at) || 0,
+    }));
+}
+
+export function getAllPushSubscriptions(): PushSubscriptionRecord[] {
+  return db
+    .query<any>(`SELECT * FROM push_subscriptions`)
+    .all()
+    .map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      endpoint: r.endpoint,
+      p256dh: r.p256dh,
+      auth: r.auth,
+      createdAt: Number(r.created_at) || 0,
+    }));
 }
 
 export function getPendingClients(): {

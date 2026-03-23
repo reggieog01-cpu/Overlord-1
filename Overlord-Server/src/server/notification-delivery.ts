@@ -2,9 +2,13 @@ import { v4 as uuidv4 } from "uuid";
 import {
   getNotificationScreenshot,
   saveNotificationScreenshot,
+  getAllPushSubscriptions,
+  deletePushSubscription,
   type NotificationScreenshotRecord,
+  type PushSubscriptionRecord,
 } from "../db";
 import { logger } from "../logger";
+import { sendWebPush } from "./web-push";
 
 export type NotificationRecord = {
   id: string;
@@ -17,7 +21,7 @@ export type NotificationRecord = {
   processPath?: string;
   pid?: number;
   keyword?: string;
-  category: "active_window";
+  category: "active_window" | "clipboard";
   ts: number;
   screenshotId?: string;
 };
@@ -271,12 +275,113 @@ async function deliverToUser(
   ]);
 }
 
+async function deliverWebPushToAll(
+  record: NotificationRecord,
+  getUserDeliveryTargets: (clientId: string) => UserDeliveryTarget[],
+): Promise<void> {
+  const subs = getAllPushSubscriptions();
+  if (subs.length === 0) return;
+
+  const targets = getUserDeliveryTargets(record.clientId);
+  const allowedUserIds = new Set(targets.map((t) => t.userId));
+
+  const title = record.keyword
+    ? `Overlord \u2014 ${record.keyword}`
+    : "Overlord \u2014 Notification";
+  const lines = [record.title];
+  if (record.user) lines.push(`User: ${record.user}`);
+  if (record.host) lines.push(`Host: ${record.host}`);
+  if (record.process) lines.push(`Process: ${record.process}`);
+
+  const payload = JSON.stringify({
+    type: "notification",
+    title,
+    body: lines.filter(Boolean).join("\n"),
+    tag: `overlord-${record.id || Date.now()}`,
+    url: "/notifications",
+  });
+
+  await Promise.allSettled(
+    subs
+      .filter((sub) => allowedUserIds.has(sub.userId))
+      .map(async (sub) => {
+        const result = await sendWebPush(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload,
+        );
+        if (result.gone) {
+          deletePushSubscription(sub.endpoint);
+          logger.info(`[web-push] removed gone subscription for user ${sub.userId}`);
+        } else if (!result.success) {
+          logger.warn(`[web-push] delivery failed for user ${sub.userId}: ${result.error}`);
+        }
+      }),
+  );
+}
+
+export async function deliverWebPushClientEvent(
+  event: string,
+  info: { id: string; host?: string; user?: string; os?: string },
+  canUserAccessClient: (userId: number, userRole: string, clientId: string) => boolean,
+  getUserRole: (userId: number) => string | undefined,
+): Promise<void> {
+  const subs = getAllPushSubscriptions();
+  if (subs.length === 0) return;
+
+  const labels: Record<string, string> = {
+    client_online: "\u{1F7E2} Client Online",
+    client_offline: "\u{1F534} Client Offline",
+    client_purgatory: "\u{1F7E1} Client Awaiting Approval",
+  };
+
+  const title = labels[event] || "Overlord \u2014 Client Event";
+  const lines: string[] = [];
+  if (info.host) lines.push(`Host: ${info.host}`);
+  if (info.user) lines.push(`User: ${info.user}`);
+  if (info.os) lines.push(`OS: ${info.os}`);
+  if (info.id) lines.push(`ID: ${info.id}`);
+
+  const dest = event === "client_purgatory" ? "/purgatory" : "/";
+
+  const payload = JSON.stringify({
+    type: "client_event",
+    event,
+    title,
+    body: lines.join("\n") || info.id || "",
+    tag: `overlord-client-${event}-${info.id || Date.now()}`,
+    url: dest,
+  });
+
+  await Promise.allSettled(
+    subs.map(async (sub) => {
+      const role = getUserRole(sub.userId);
+      if (!role) return;
+      if (event === "client_purgatory") {
+        if (role !== "admin" && role !== "operator") return;
+      } else if (role !== "admin") {
+        if (!canUserAccessClient(sub.userId, role, info.id)) return;
+      }
+
+      const result = await sendWebPush(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload,
+      );
+      if (result.gone) {
+        deletePushSubscription(sub.endpoint);
+      }
+    }),
+  );
+}
+
 export async function deliverNotificationWithScreenshot(
   record: NotificationRecord,
   getUserDeliveryTargets: (clientId: string) => UserDeliveryTarget[],
 ): Promise<void> {
   const screenshot = await waitForNotificationScreenshot(record.id);
   const targets = getUserDeliveryTargets(record.clientId);
-  await Promise.allSettled(targets.map((t) => deliverToUser(t, record, screenshot)));
+  await Promise.allSettled([
+    ...targets.map((t) => deliverToUser(t, record, screenshot)),
+    deliverWebPushToAll(record, getUserDeliveryTargets),
+  ]);
 }
 
