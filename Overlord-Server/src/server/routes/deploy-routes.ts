@@ -7,6 +7,7 @@ import { AuditAction, logAudit } from "../../auditLog";
 import * as clientManager from "../../clientManager";
 import { metrics } from "../../metrics";
 import { encodeMessage } from "../../protocol";
+import { createUploadPull } from "./file-download-routes";
 
 type RequestIpProvider = {
   requestIP: (req: Request) => { address?: string } | null | undefined;
@@ -175,8 +176,6 @@ export async function handleDeployRoutes(
       return new Response("Not found", { status: 404 });
     }
 
-    const bytes = new Uint8Array(await fs.readFile(upload.path));
-    const chunkSize = 256 * 1024;
     const results: Array<{ clientId: string; ok: boolean; reason?: string; command?: string }> = [];
 
     const formatCommandDisplay = (commandPath: string, commandArgs: string) => {
@@ -208,33 +207,29 @@ export async function handleDeployRoutes(
         continue;
       }
 
-      const dir = clientOs === "windows"
+      const destDir = clientOs === "windows"
         ? `C:\\Windows\\Temp\\Overlord\\${upload.id}`
         : `/tmp/overlord/${upload.id}`;
       const destPath = clientOs === "windows"
-        ? `${dir}\\${upload.name}`
-        : `${dir}/${upload.name}`;
+        ? `${destDir}\\${upload.name}`
+        : `${destDir}/${upload.name}`;
+
+      const pullId = createUploadPull({
+        clientId,
+        filePath: upload.path,
+        fileName: upload.name,
+        size: upload.size,
+      });
+      const pullUrl = `${url.origin}/api/file/upload/pull/${encodeURIComponent(pullId)}`;
 
       target.ws.send(
         encodeMessage({
           type: "command",
-          commandType: "file_mkdir",
+          commandType: "file_upload_http",
           id: uuidv4(),
-          payload: { path: dir },
+          payload: { path: destPath, url: pullUrl, total: upload.size },
         }),
       );
-
-      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-        const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
-        target.ws.send(
-          encodeMessage({
-            type: "command",
-            commandType: "file_upload",
-            id: uuidv4(),
-            payload: { path: destPath, data: chunk, offset, total: bytes.length },
-          }),
-        );
-      }
 
       if (clientOs !== "windows") {
         target.ws.send(
@@ -302,8 +297,9 @@ export async function handleDeployRoutes(
       return new Response("Not found", { status: 404 });
     }
 
-    const bytes = new Uint8Array(await fs.readFile(upload.path));
-    const chunkSize = 256 * 1024;
+    const fileBytes = new Uint8Array(await fs.readFile(upload.path));
+    const fileHash = createHash("sha256").update(fileBytes).digest("hex");
+
     const results: Array<{ clientId: string; ok: boolean; reason?: string }> = [];
 
     for (const clientId of clientIds) {
@@ -325,33 +321,29 @@ export async function handleDeployRoutes(
         continue;
       }
 
-      const dir = clientOs === "windows"
+      const destDir = clientOs === "windows"
         ? `C:\\Windows\\Temp\\Overlord\\${upload.id}`
         : `/tmp/overlord/${upload.id}`;
       const destPath = clientOs === "windows"
-        ? `${dir}\\${upload.name}`
-        : `${dir}/${upload.name}`;
+        ? `${destDir}\\${upload.name}`
+        : `${destDir}/${upload.name}`;
+
+      const pullId = createUploadPull({
+        clientId,
+        filePath: upload.path,
+        fileName: upload.name,
+        size: upload.size,
+      });
+      const pullUrl = `${url.origin}/api/file/upload/pull/${encodeURIComponent(pullId)}`;
 
       target.ws.send(
         encodeMessage({
           type: "command",
-          commandType: "file_mkdir",
+          commandType: "file_upload_http",
           id: uuidv4(),
-          payload: { path: dir },
+          payload: { path: destPath, url: pullUrl, total: upload.size },
         }),
       );
-
-      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-        const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
-        target.ws.send(
-          encodeMessage({
-            type: "command",
-            commandType: "file_upload",
-            id: uuidv4(),
-            payload: { path: destPath, data: chunk, offset, total: bytes.length },
-          }),
-        );
-      }
 
       if (clientOs !== "windows") {
         target.ws.send(
@@ -364,7 +356,7 @@ export async function handleDeployRoutes(
         );
       }
 
-      const hash = createHash("sha256").update(bytes).digest("hex");
+      const hash = fileHash;
       target.ws.send(
         encodeMessage({
           type: "command",

@@ -61,6 +61,7 @@ type UploadPull = {
   size: number;
   expiresAt: number;
   timeout: ReturnType<typeof setTimeout>;
+  deleteFile: boolean;
 };
 
 type FileDownloadRouteDeps = {
@@ -299,6 +300,33 @@ async function serveDownloadById(
   return new Response(streamFileAndDelete(completed.tmpPath), { headers });
 }
 
+export function createUploadPull(opts: {
+  clientId: string;
+  filePath: string;
+  fileName: string;
+  size: number;
+  ttlMs?: number;
+}): string {
+  const pullId = uuidv4();
+  const ttl = opts.ttlMs ?? FILE_UPLOAD_PULL_TTL_MS;
+  const expiresAt = Date.now() + ttl;
+  const pullTimeout = setTimeout(() => {
+    uploadPulls.delete(pullId);
+  }, ttl);
+  uploadPulls.set(pullId, {
+    id: pullId,
+    clientId: opts.clientId,
+    path: opts.filePath,
+    fileName: opts.fileName,
+    tmpPath: opts.filePath,
+    size: opts.size,
+    expiresAt,
+    timeout: pullTimeout,
+    deleteFile: false,
+  });
+  return pullId;
+}
+
 export async function handleFileDownloadRoutes(
   req: Request,
   url: URL,
@@ -446,7 +474,7 @@ export async function handleFileDownloadRoutes(
     const pullTimeout = setTimeout(() => {
       const pull = uploadPulls.get(pullId);
       uploadPulls.delete(pullId);
-      if (pull) {
+      if (pull && pull.deleteFile) {
         void fs.unlink(pull.tmpPath).catch(() => {});
       }
     }, FILE_UPLOAD_PULL_TTL_MS);
@@ -460,6 +488,7 @@ export async function handleFileDownloadRoutes(
       size: stagedSize,
       expiresAt: pullExpiresAt,
       timeout: pullTimeout,
+      deleteFile: true,
     });
 
     return Response.json({
@@ -514,7 +543,10 @@ export async function handleFileDownloadRoutes(
       "Content-Length": String(pull.size),
     };
 
-    return new Response(streamFileAndDelete(pull.tmpPath), { headers });
+    const body = pull.deleteFile
+      ? streamFileAndDelete(pull.tmpPath)
+      : Bun.file(pull.tmpPath).stream();
+    return new Response(body, { headers });
   }
 
   if (!url.pathname.startsWith("/api/file/download")) {
