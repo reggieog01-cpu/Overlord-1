@@ -786,7 +786,7 @@ async function streamBuildOutput(buildId, config = {}) {
               displayBuild(buildData);
             }
 
-            reader.releaseLock();
+            reader.cancel();
             return;
           } else if (data.type === "error") {
             addBuildOutput(`\nERROR: ${data.error}\n`, "error");

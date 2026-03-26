@@ -186,6 +186,15 @@ export async function startBuildProcess(
         logger.error("[build] Failed to send to stream:", err);
       }
     });
+
+    if (data.type === "complete") {
+      build.controllers.forEach((controller) => {
+        try {
+          controller.close();
+        } catch {}
+      });
+      build.controllers.length = 0;
+    }
   };
 
   let winresTempDir: string | null = null;
