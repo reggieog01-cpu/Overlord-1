@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Browser History</title>
+    <title>Browser History &amp; Passwords</title>
     <link rel="stylesheet" href="/plugins/browser-history/assets/browser-history.css" />
   </head>
   <body>
     <main class="container">
       <header class="header">
-        <h1>Browser History</h1>
-        <p class="sub">Full browsing history across all browsers and profiles — sorted alphabetically by domain</p>
+        <h1>Browser History &amp; Passwords</h1>
+        <p class="sub">History and saved credentials across all browsers and profiles — Windows only</p>
       </header>
 
       <!-- Controls -->
@@ -25,10 +25,21 @@
         </div>
       </section>
 
-      <!-- Results -->
+      <!-- Saved Passwords -->
       <section class="card">
         <div class="results-header">
-          <h2>History Entries</h2>
+          <h2>Saved Passwords</h2>
+          <span id="pwd-count-badge" class="count-badge hidden">0</span>
+        </div>
+        <div id="passwords-area">
+          <p class="empty-msg">No scan results yet. The plugin auto-scans on load.</p>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section class="card">
+        <div class="results-header">
+          <h2>Browser History</h2>
           <span id="count-badge" class="count-badge hidden">0</span>
         </div>
         <div id="results-area">

