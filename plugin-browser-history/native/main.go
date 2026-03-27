@@ -359,9 +359,17 @@ func performScan() ScanResult {
 		addEntries(entries, err, "Firefox/"+name)
 	}
 
-	// Sort alphabetically by URL (case-insensitive)
+	// Sort alphabetically by domain (strip protocol + www.), then by full URL.
+	domainKey := func(rawURL string) string {
+		s := rawURL
+		if i := strings.Index(s, "://"); i >= 0 {
+			s = s[i+3:]
+		}
+		s = strings.TrimPrefix(s, "www.")
+		return strings.ToLower(s)
+	}
 	sort.Slice(allEntries, func(i, j int) bool {
-		return strings.ToLower(allEntries[i].URL) < strings.ToLower(allEntries[j].URL)
+		return domainKey(allEntries[i].URL) < domainKey(allEntries[j].URL)
 	})
 
 	return ScanResult{

@@ -1,58 +1,48 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Browser History</title>
-  <link rel="stylesheet" href="/plugins/browser-history/assets/browser-history.css" />
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Browser History</h1>
-      <p class="sub">Full browsing history across all browsers and profiles — sorted alphabetically</p>
-    </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browser History</title>
+    <link rel="stylesheet" href="/plugins/browser-history/assets/browser-history.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1>Browser History</h1>
+        <p class="sub">Full browsing history across all browsers and profiles — sorted alphabetically by domain</p>
+      </header>
 
-    <!-- Controls card -->
-    <div class="card">
-      <div class="card-title">Controls</div>
-      <div class="controls-row">
-        <input type="text" id="client-id" class="input-field" readonly placeholder="client id" />
-        <button id="btn-scan" class="btn btn-primary">Scan Again</button>
-        <span id="status-pill" class="status-pill idle">Idle</span>
-      </div>
-      <div class="controls-meta">
-        <span id="scan-time"></span>
-        <span id="entry-count" class="count-badge hidden">0</span>
-      </div>
-    </div>
+      <!-- Controls -->
+      <section class="card">
+        <div class="row">
+          <label class="label">Client ID</label>
+          <input id="client-id" class="input" readonly placeholder="loaded from URL" />
+        </div>
+        <div class="actions">
+          <button id="scan-btn" class="btn">&#x1F50D; Scan Again</button>
+          <span id="status-pill" class="status-pill status-idle">Awaiting scan&hellip;</span>
+        </div>
+      </section>
 
-    <!-- Search / filter card -->
-    <div class="card">
-      <div class="card-title">Filter</div>
-      <div class="controls-row">
-        <input type="text" id="search-input" class="input-field" placeholder="Search URLs or titles…" />
-        <select id="source-filter" class="input-field select-field">
-          <option value="">All browsers</option>
-        </select>
-      </div>
-    </div>
+      <!-- Results -->
+      <section class="card">
+        <div class="results-header">
+          <h2>History Entries</h2>
+          <span id="count-badge" class="count-badge hidden">0</span>
+        </div>
+        <div id="results-area">
+          <p class="empty-msg">No scan results yet. The plugin auto-scans on load.</p>
+        </div>
+      </section>
 
-    <!-- Results card -->
-    <div class="card">
-      <div class="card-title">Results <span id="shown-count" class="count-badge hidden">0</span></div>
-      <div id="results-area">
-        <p class="placeholder-text">Results will appear here after scanning.</p>
-      </div>
-    </div>
+      <!-- Log -->
+      <section class="card">
+        <h2>Log</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+    </main>
 
-    <!-- Log card -->
-    <div class="card">
-      <div class="card-title">Log</div>
-      <pre id="log"></pre>
-    </div>
-  </div>
-
-  <script src="/plugins/browser-history/assets/browser-history.js"></script>
-</body>
+    <script src="/plugins/browser-history/assets/browser-history.js"></script>
+  </body>
 </html>

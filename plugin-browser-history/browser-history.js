@@ -1,36 +1,72 @@
-"use strict";
+const params = new URLSearchParams(window.location.search);
+const clientIdInput = document.getElementById("client-id");
+const scanBtn = document.getElementById("scan-btn");
+const statusPill = document.getElementById("status-pill");
+const countBadge = document.getElementById("count-badge");
+const resultsArea = document.getElementById("results-area");
+const logEl = document.getElementById("log");
 
-// ── state ────────────────────────────────────────────────────────────────────
-let clientId = "";
+const pluginId = "browser-history";
+const clientId = params.get("clientId") || "";
+clientIdInput.value = clientId;
+
 let pollTimer = null;
-let allEntries = [];  // full dataset from last scan
-let scanTime   = "";
 
-// ── DOM ───────────────────────────────────────────────────────────────────────
-const elClientId    = document.getElementById("client-id");
-const elBtnScan     = document.getElementById("btn-scan");
-const elStatusPill  = document.getElementById("status-pill");
-const elScanTime    = document.getElementById("scan-time");
-const elEntryCount  = document.getElementById("entry-count");
-const elShownCount  = document.getElementById("shown-count");
-const elResultsArea = document.getElementById("results-area");
-const elLog         = document.getElementById("log");
-const elSearch      = document.getElementById("search-input");
-const elSourceFilter = document.getElementById("source-filter");
+// ─── Logging ──────────────────────────────────────────────────────────────────
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-function log(msg) {
-  const ts = new Date().toLocaleTimeString();
-  elLog.textContent += `[${ts}] ${msg}\n`;
-  elLog.scrollTop = elLog.scrollHeight;
+function log(line) {
+  const ts = new Date().toISOString();
+  logEl.textContent = `${ts}  ${line}\n` + logEl.textContent;
 }
 
-function setStatus(state, text) {
-  elStatusPill.className = `status-pill ${state}`;
-  elStatusPill.textContent = text;
+// ─── Status pill helpers ───────────────────────────────────────────────────────
+
+function setStatus(text, cls) {
+  statusPill.textContent = text;
+  statusPill.className = "status-pill " + cls;
 }
 
-function escHtml(str) {
+// ─── API helpers ───────────────────────────────────────────────────────────────
+
+async function sendPluginEvent(event, payload) {
+  if (!clientId) { log("Missing clientId"); return; }
+  const res = await fetch(
+    `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/event`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, payload }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    log(`sendEvent failed: ${res.status} ${text}`);
+  }
+}
+
+async function pollEvents() {
+  if (!clientId) return;
+  try {
+    const res = await fetch(
+      `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`,
+      { method: "GET" }
+    );
+    if (!res.ok) {
+      log(`poll failed: ${res.status}`);
+      return;
+    }
+    const data = await res.json();
+    for (const item of data.events || []) {
+      handleIncomingEvent(item.event, item.payload);
+    }
+  } catch (err) {
+    log(`poll error: ${err.message}`);
+  }
+}
+
+// ─── Render results ────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -38,159 +74,126 @@ function escHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
-async function sendPluginEvent(event, payload = {}) {
-  const res = await fetch(`/api/clients/${clientId}/plugins/browser-history/event`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ event, payload }),
-  });
-  if (!res.ok) throw new Error(`sendPluginEvent ${res.status}`);
-}
-
-async function pollEvents() {
+function extractDomain(url) {
   try {
-    const res = await fetch(`/api/clients/${clientId}/plugins/browser-history/events`);
-    if (!res.ok) return;
-    const events = await res.json();
-    for (const { event, payload } of events) {
-      handleIncomingEvent(event, payload);
-    }
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch (_) {
-    // network blip — silent
+    return url;
   }
 }
 
-// ── event handling ────────────────────────────────────────────────────────────
+function renderResults(entries, scannedAt, total) {
+  countBadge.textContent = String(total);
+  countBadge.classList.toggle("hidden", total === 0);
+
+  if (total === 0) {
+    resultsArea.innerHTML = `<p class="no-wallets">&#x2714; No browsing history found on this machine.</p>`;
+    return;
+  }
+
+  // Group by first letter of domain
+  const groups = {};
+  for (const e of entries) {
+    const domain = extractDomain(e.url);
+    const letter = (domain[0] || "#").toUpperCase();
+    if (!groups[letter]) groups[letter] = [];
+    groups[letter].push(e);
+  }
+
+  const letters = Object.keys(groups).sort();
+  let html = "";
+
+  for (const letter of letters) {
+    const items = groups[letter];
+    const rows = items
+      .map(
+        (e) => `<tr>
+          <td class="url-cell"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.url)}</a></td>
+          <td class="title-cell">${escapeHtml(e.title || "")}</td>
+          <td class="source-cell">${escapeHtml(e.source)}</td>
+        </tr>`
+      )
+      .join("");
+
+    html += `
+      <div class="category-group">
+        <div class="category-title cat-letter">
+          <span class="cat-dot"></span>${escapeHtml(letter)} (${items.length})
+        </div>
+        <table class="wallet-table">
+          <thead><tr><th>URL</th><th>Title</th><th>Browser</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  resultsArea.innerHTML = html;
+}
+
+// ─── Handle incoming plugin events ────────────────────────────────────────────
+
 function handleIncomingEvent(event, payload) {
   if (event === "ready") {
-    log("Plugin loaded on agent. Auto-scan running…");
-    setStatus("scanning", "Scanning");
-    return;
-  }
+    log("Plugin ready on client — auto-scan started");
+    setStatus("Scanning\u2026", "status-scanning");
+  } else if (event === "history_result") {
+    stopPolling();
+    const total = payload?.total ?? 0;
+    const entries = payload?.entries ?? [];
+    const scannedAt = payload?.scannedAt ?? "";
 
-  if (event === "history_result") {
-    setStatus("done", "Done");
-    allEntries = payload.entries || [];
-    scanTime   = payload.scannedAt || "";
-    const total = payload.total || allEntries.length;
+    log(`Scan complete at ${scannedAt} — ${total} URL(s) found`);
 
-    log(`Scan complete — ${total} unique URLs found (${scanTime})`);
-
-    if (scanTime) {
-      elScanTime.textContent = `Last scan: ${new Date(scanTime).toLocaleString()}`;
-    }
-    elEntryCount.textContent = total;
-    elEntryCount.classList.toggle("hidden", total === 0);
-
-    if (payload.errors && payload.errors.length) {
-      log("Errors: " + payload.errors.join(" | "));
+    if (total > 0) {
+      setStatus(`${total} URL(s) found`, "status-found");
+    } else {
+      setStatus("No history found", "status-clean");
     }
 
-    populateSourceFilter(allEntries);
-    renderResults();
+    renderResults(entries, scannedAt, total);
+    scanBtn.disabled = false;
+  } else {
+    log(`Event: ${event} \u2192 ${JSON.stringify(payload)}`);
+  }
+}
+
+// ─── Polling control ──────────────────────────────────────────────────────────
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(pollEvents, 2000);
+  void pollEvents();
+}
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+// ─── Scan button ──────────────────────────────────────────────────────────────
+
+scanBtn.addEventListener("click", async () => {
+  if (!clientId) {
+    log("No clientId in URL");
     return;
   }
-
-  log(`Event: ${event}`);
-}
-
-// ── source filter ─────────────────────────────────────────────────────────────
-function populateSourceFilter(entries) {
-  const sources = [...new Set(entries.map(e => e.source))].sort();
-  // preserve current selection
-  const prev = elSourceFilter.value;
-  // remove all except first option (All browsers)
-  while (elSourceFilter.options.length > 1) elSourceFilter.remove(1);
-  for (const src of sources) {
-    const opt = document.createElement("option");
-    opt.value = src;
-    opt.textContent = src;
-    elSourceFilter.appendChild(opt);
-  }
-  if (prev && sources.includes(prev)) elSourceFilter.value = prev;
-}
-
-// ── render ────────────────────────────────────────────────────────────────────
-function renderResults() {
-  const query  = elSearch.value.trim().toLowerCase();
-  const source = elSourceFilter.value;
-
-  let filtered = allEntries;
-  if (source) {
-    filtered = filtered.filter(e => e.source === source);
-  }
-  if (query) {
-    filtered = filtered.filter(e =>
-      e.url.toLowerCase().includes(query) ||
-      (e.title || "").toLowerCase().includes(query)
-    );
-  }
-
-  elShownCount.textContent = filtered.length;
-  elShownCount.classList.toggle("hidden", filtered.length === 0 && allEntries.length === 0);
-
-  if (filtered.length === 0) {
-    const msg = allEntries.length === 0
-      ? "Results will appear here after scanning."
-      : "No results match your filter.";
-    elResultsArea.innerHTML = `<p class="placeholder-text">${msg}</p>`;
-    return;
-  }
-
-  const rows = filtered.map(e => `
-    <tr>
-      <td class="url-cell"><a href="${escHtml(e.url)}" target="_blank" rel="noopener noreferrer">${escHtml(e.url)}</a></td>
-      <td class="title-cell">${escHtml(e.title || "")}</td>
-      <td class="source-cell"><span class="source-tag">${escHtml(e.source)}</span></td>
-    </tr>`).join("");
-
-  elResultsArea.innerHTML = `
-    <table class="history-table">
-      <thead>
-        <tr>
-          <th>URL</th>
-          <th>Title</th>
-          <th>Source</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ── scan button ───────────────────────────────────────────────────────────────
-elBtnScan.addEventListener("click", async () => {
-  setStatus("scanning", "Scanning");
-  elBtnScan.disabled = true;
-  log("Manual scan triggered…");
-  try {
-    await sendPluginEvent("scan");
-  } catch (err) {
-    log(`Error: ${err.message}`);
-    setStatus("error", "Error");
-  } finally {
-    elBtnScan.disabled = false;
-  }
+  scanBtn.disabled = true;
+  setStatus("Scanning\u2026", "status-scanning");
+  log("Manual scan triggered");
+  await sendPluginEvent("scan", {});
+  startPolling();
 });
 
-// ── live filter ───────────────────────────────────────────────────────────────
-elSearch.addEventListener("input", renderResults);
-elSourceFilter.addEventListener("change", renderResults);
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
-// ── init ──────────────────────────────────────────────────────────────────────
-(function init() {
-  const params = new URLSearchParams(window.location.search);
-  clientId = params.get("clientId") || params.get("client_id") || "";
-  elClientId.value = clientId;
-  log(`Plugin started. clientId=${clientId}`);
-
-  if (!clientId) {
-    log("WARNING: no clientId in URL params.");
-    return;
-  }
-
-  // Start polling for events
-  pollTimer = setInterval(pollEvents, 2000);
-  // Immediate first poll to catch buffered auto-scan result
-  pollEvents();
-})();
+if (!clientId) {
+  log("No clientId provided in URL — open this page from a client context");
+  setStatus("No client selected", "status-idle");
+} else {
+  log(`Client: ${clientId}`);
+  log("Waiting for auto-scan result\u2026");
+  setStatus("Awaiting auto-scan\u2026", "status-scanning");
+  startPolling();
+}
