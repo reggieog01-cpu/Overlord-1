@@ -205,14 +205,20 @@ body {
 .cat-pwd { color: #f87171; }
 .cat-pwd .cat-dot { background: #ef4444; }
 
-.pwd-count-badge {
-  background: rgba(248, 113, 113, 0.15);
-  border: 1px solid rgba(248, 113, 113, 0.4);
-  color: #f87171;
-}
+.cat-profile { color: #4ade80; }
+.cat-profile .cat-dot { background: #22c55e; }
+
+.cat-card { color: #c084fc; }
+.cat-card .cat-dot { background: #a855f7; }
 
 .password-cell {
   color: #fbbf24;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.card-number-cell {
+  color: #c084fc;
   font-family: "Consolas", "Courier New", monospace;
   font-size: 12px;
 }

