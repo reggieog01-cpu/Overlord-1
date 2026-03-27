@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bot Killer</title>
+    <link rel="stylesheet" href="/plugins/bot-killer/assets/bot-killer.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1>Bot Killer</h1>
+        <p class="sub">Detects and removes malicious persistence — run keys, tasks, services, WMI, IFEO &amp; more</p>
+      </header>
+
+      <!-- Controls -->
+      <section class="card">
+        <div class="row">
+          <label class="label">Client ID</label>
+          <input id="client-id" class="input" readonly placeholder="loaded from URL" />
+        </div>
+        <div class="actions">
+          <button id="scan-btn" class="btn">&#x1F50D; Scan Again</button>
+          <button id="kill-btn" class="btn btn-danger" disabled>&#x1F5D1; Kill Selected</button>
+          <span id="status-pill" class="status-pill status-idle">Awaiting scan&hellip;</span>
+        </div>
+        <div class="bulk-actions">
+          <button id="sel-high-btn" class="btn-link">Select all High Risk</button>
+          <span class="sep">·</span>
+          <button id="sel-all-btn" class="btn-link">Select All</button>
+          <span class="sep">·</span>
+          <button id="desel-btn" class="btn-link">Deselect All</button>
+          <span class="sep">·</span>
+          <span id="sel-count" class="sel-count">0 selected</span>
+        </div>
+      </section>
+
+      <!-- Results -->
+      <section class="card">
+        <div class="results-header">
+          <h2>Persistence Entries</h2>
+          <span id="count-high" class="count-badge count-high hidden">0 High</span>
+          <span id="count-med"  class="count-badge count-med  hidden">0 Med</span>
+          <span id="count-low"  class="count-badge count-low  hidden">0 Low</span>
+        </div>
+        <div id="results-area">
+          <p class="empty-msg">No scan results yet. The plugin auto-scans on load.</p>
+        </div>
+      </section>
+
+      <!-- Log -->
+      <section class="card">
+        <h2>Log</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+    </main>
+
+    <script src="/plugins/bot-killer/assets/bot-killer.js"></script>
+  </body>
+</html>
