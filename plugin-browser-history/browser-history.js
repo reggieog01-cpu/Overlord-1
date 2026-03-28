@@ -1,5 +1,3 @@
-document.addEventListener("DOMContentLoaded", function () {
-
 const params       = new URLSearchParams(window.location.search);
 let parentParams   = new URLSearchParams("");
 try { parentParams = new URLSearchParams(window.parent.location.search); } catch (_) {}
@@ -302,5 +300,3 @@ if (!clientId) {
   setStatus("Awaiting auto-scan\u2026", "status-scanning");
   startPolling();
 }
-
-}); // end DOMContentLoaded
