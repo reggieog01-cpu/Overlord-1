@@ -231,6 +231,155 @@ export async function handlePluginRoutes(
     });
   }
 
+  function resolveDataPath(pluginId: string, relPath: string): string | null {
+    const dataDir = path.join(deps.PLUGIN_ROOT, pluginId, "data");
+    const target = path.resolve(dataDir, relPath);
+    const prefix = dataDir.endsWith(path.sep) ? dataDir : `${dataDir}${path.sep}`;
+    if (target !== dataDir && !target.startsWith(prefix)) return null;
+    return target;
+  }
+
+  const pluginDataListMatch = url.pathname.match(/^\/api\/plugins\/([^/]+)\/data$/);
+  if (req.method === "GET" && pluginDataListMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    try { requirePermission(user, "clients:control"); } catch (e) { if (e instanceof Response) return e; return new Response("Forbidden", { status: 403 }); }
+    let pluginId = "";
+    try { pluginId = deps.sanitizePluginId(pluginDataListMatch[1]); } catch { return new Response("Invalid plugin id", { status: 400 }); }
+    const dataDir = path.join(deps.PLUGIN_ROOT, pluginId, "data");
+    await fs.mkdir(dataDir, { recursive: true });
+    async function walkDir(dir: string, base: string): Promise<{ path: string; size: number; isDir: boolean }[]> {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const results: { path: string; size: number; isDir: boolean }[] = [];
+      for (const ent of entries) {
+        const rel = base ? `${base}/${ent.name}` : ent.name;
+        if (ent.isDirectory()) {
+          results.push({ path: rel, size: 0, isDir: true });
+          const sub = await walkDir(path.join(dir, ent.name), rel);
+          results.push(...sub);
+        } else {
+          const st = await fs.stat(path.join(dir, ent.name)).catch(() => null);
+          results.push({ path: rel, size: st?.size ?? 0, isDir: false });
+        }
+      }
+      return results;
+    }
+    const files = await walkDir(dataDir, "");
+    return Response.json({ ok: true, files });
+  }
+
+  const pluginDataReadMatch = url.pathname.match(/^\/api\/plugins\/([^/]+)\/data\/(.+)$/);
+  if (req.method === "GET" && pluginDataReadMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    try { requirePermission(user, "clients:control"); } catch (e) { if (e instanceof Response) return e; return new Response("Forbidden", { status: 403 }); }
+    let pluginId = "";
+    try { pluginId = deps.sanitizePluginId(pluginDataReadMatch[1]); } catch { return new Response("Invalid plugin id", { status: 400 }); }
+    let relPath = pluginDataReadMatch[2];
+    try { relPath = decodeURIComponent(relPath); } catch { return new Response("Bad request", { status: 400 }); }
+    if (relPath.includes("\u0000")) return new Response("Bad request", { status: 400 });
+    const target = resolveDataPath(pluginId, relPath);
+    if (!target) return new Response("Forbidden", { status: 403 });
+    const file = Bun.file(target);
+    if (!(await file.exists())) return new Response("Not found", { status: 404 });
+    const st = await fs.stat(target);
+    if (st.isDirectory()) return new Response("Is a directory", { status: 400 });
+    return new Response(file, { headers: deps.secureHeaders(deps.mimeType(relPath)) });
+  }
+
+  const pluginDataWriteMatch = url.pathname.match(/^\/api\/plugins\/([^/]+)\/data\/(.+)$/);
+  if (req.method === "PUT" && pluginDataWriteMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    try { requirePermission(user, "clients:control"); } catch (e) { if (e instanceof Response) return e; return new Response("Forbidden", { status: 403 }); }
+    let pluginId = "";
+    try { pluginId = deps.sanitizePluginId(pluginDataWriteMatch[1]); } catch { return new Response("Invalid plugin id", { status: 400 }); }
+    let relPath = pluginDataWriteMatch[2];
+    try { relPath = decodeURIComponent(relPath); } catch { return new Response("Bad request", { status: 400 }); }
+    if (relPath.includes("\u0000") || relPath.endsWith("/") || relPath.endsWith(path.sep)) {
+      return new Response("Bad request", { status: 400 });
+    }
+    const target = resolveDataPath(pluginId, relPath);
+    if (!target) return new Response("Forbidden", { status: 403 });
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const body = await req.arrayBuffer();
+    await fs.writeFile(target, new Uint8Array(body));
+    return Response.json({ ok: true, path: relPath, size: body.byteLength });
+  }
+
+  const pluginDataDeleteMatch = url.pathname.match(/^\/api\/plugins\/([^/]+)\/data\/(.+)$/);
+  if (req.method === "DELETE" && pluginDataDeleteMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    try { requirePermission(user, "clients:control"); } catch (e) { if (e instanceof Response) return e; return new Response("Forbidden", { status: 403 }); }
+    let pluginId = "";
+    try { pluginId = deps.sanitizePluginId(pluginDataDeleteMatch[1]); } catch { return new Response("Invalid plugin id", { status: 400 }); }
+    let relPath = pluginDataDeleteMatch[2];
+    try { relPath = decodeURIComponent(relPath); } catch { return new Response("Bad request", { status: 400 }); }
+    if (relPath.includes("\u0000")) return new Response("Bad request", { status: 400 });
+    const target = resolveDataPath(pluginId, relPath);
+    if (!target) return new Response("Forbidden", { status: 403 });
+    try {
+      const st = await fs.stat(target);
+      if (st.isDirectory()) {
+        await fs.rm(target, { recursive: true, force: true });
+      } else {
+        await fs.unlink(target);
+      }
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+    return Response.json({ ok: true, path: relPath });
+  }
+
+  // Execute a file stored in the plugin's data directory
+  const pluginExecMatch = url.pathname.match(/^\/api\/plugins\/([^/]+)\/exec$/);
+  if (req.method === "POST" && pluginExecMatch) {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+    if (user.role !== "admin" && user.role !== "operator") {
+      return new Response("Forbidden: Admin or operator access required", { status: 403 });
+    }
+    let pluginId = "";
+    try { pluginId = deps.sanitizePluginId(pluginExecMatch[1]); } catch { return new Response("Invalid plugin id", { status: 400 }); }
+    let body: any = {};
+    try { body = await req.json(); } catch { return new Response("Bad request", { status: 400 }); }
+    const filePath = typeof body.file === "string" ? body.file : "";
+    if (!filePath) return new Response("Missing file", { status: 400 });
+    let decodedFile = filePath;
+    try { decodedFile = decodeURIComponent(filePath); } catch { return new Response("Bad request", { status: 400 }); }
+    if (decodedFile.includes("\u0000")) return new Response("Bad request", { status: 400 });
+    const target = resolveDataPath(pluginId, decodedFile);
+    if (!target) return new Response("Forbidden", { status: 403 });
+    try {
+      const st = await fs.stat(target);
+      if (st.isDirectory()) return new Response("Is a directory", { status: 400 });
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+    const args: string[] = Array.isArray(body.args) ? body.args.filter((a: any) => typeof a === "string") : [];
+    const stdinData: string = typeof body.stdin === "string" ? body.stdin : "";
+    const timeoutMs: number = typeof body.timeoutMs === "number" && body.timeoutMs > 0 ? Math.min(body.timeoutMs, 60_000) : 30_000;
+    // Ensure the binary is executable
+    try { await fs.chmod(target, 0o755); } catch {}
+    const proc = Bun.spawn([target, ...args], {
+      cwd: path.dirname(target),
+      stdin: stdinData ? Buffer.from(stdinData) : "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const killTimer = setTimeout(() => { try { proc.kill(); } catch {} }, timeoutMs);
+    let exitCode = 0;
+    try {
+      exitCode = await proc.exited;
+    } finally {
+      clearTimeout(killTimer);
+    }
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    return Response.json({ ok: true, exitCode, stdout, stderr });
+  }
+
   const pluginDeleteMatch = url.pathname.match(/^\/api\/plugins\/(.+)$/);
   if (req.method === "DELETE" && pluginDeleteMatch) {
     const user = await authenticateRequest(req);
@@ -255,9 +404,19 @@ export async function handlePluginRoutes(
       await fs.rm(zipPath, { force: true });
     } catch {}
 
-    try {
-      await fs.rm(pluginDir, { recursive: true, force: true });
-    } catch {}
+    // Remove everything except the data/ subdirectory so plugin-stored files survive reinstalls.
+    if (pluginDir) {
+      try {
+        const entries = await fs.readdir(pluginDir, { withFileTypes: true });
+        for (const ent of entries) {
+          if (ent.name === "data") continue; // preserve plugin data directory
+          await fs.rm(path.join(pluginDir, ent.name), { recursive: true, force: true });
+        }
+        // Remove the directory itself only if it is now empty
+        const remaining = await fs.readdir(pluginDir);
+        if (remaining.length === 0) await fs.rmdir(pluginDir);
+      } catch {}
+    }
 
     // Unload from all clients that have it loaded
     for (const [cid, loadedSet] of deps.pluginLoadedByClient) {

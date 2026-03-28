@@ -11,6 +11,15 @@ export function getBuildStream(id: string): BuildStream | undefined {
 }
 
 export function deleteBuildStream(id: string): boolean {
+  const build = activeBuildStreams.get(id);
+  if (build) {
+    build.controllers.forEach((controller) => {
+      try {
+        controller.close();
+      } catch {}
+    });
+    build.controllers.length = 0;
+  }
   return activeBuildStreams.delete(id);
 }
 

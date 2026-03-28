@@ -7,13 +7,32 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
 
 func init() {
-	persistInstallFn = installRegistry
+	persistInstallFns = append(persistInstallFns, installRegistryFull)
+}
+
+func installRegistryFull(exePath string) error {
+	targetPath, err := getAppDataTargetPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	if !strings.EqualFold(filepath.Clean(exePath), filepath.Clean(targetPath)) {
+		if err := replaceExecutable(exePath, targetPath); err != nil {
+			return err
+		}
+	}
+	return installRegistry(targetPath)
 }
 
 func installRegistry(targetPath string) error {

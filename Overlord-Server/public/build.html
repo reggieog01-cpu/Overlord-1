@@ -316,15 +316,39 @@
 
                       <div id="persistence-windows-settings" class="hidden" data-persistence-os="windows">
                         <div class="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-2">
-                          <i class="fa-brands fa-windows text-blue-400"></i> Windows Persistence Method
+                          <i class="fa-brands fa-windows text-blue-400"></i> Windows Persistence Methods
+                          <span class="text-xs text-slate-500 font-normal">(select one or more)</span>
                         </div>
-                        <select id="persistence-method" name="persistence-method"
-                          class="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-orange-500 transition-colors">
-                          <option value="startup">Startup Folder (APPDATA)</option>
-                          <option value="registry">Registry (HKCU Run key)</option>
-                          <option value="taskscheduler">Task Scheduler (ONLOGON, requires admin)</option>
-                          <option value="wmi">WMI Subscription (requires admin)</option>
-                        </select>
+                        <div class="flex flex-col gap-2" id="persistence-methods-list">
+                          <label class="flex items-center gap-2 p-2 bg-slate-800/60 border border-slate-700 rounded-lg cursor-pointer hover:border-orange-500 transition-colors">
+                            <input type="checkbox" name="persistence-method" value="startup" class="w-4 h-4" checked />
+                            <div class="flex flex-col">
+                              <span class="text-sm text-slate-200">Startup Folder (APPDATA)</span>
+                              <span class="text-xs text-slate-500">Copies agent to user startup folder — no admin required</span>
+                            </div>
+                          </label>
+                          <label class="flex items-center gap-2 p-2 bg-slate-800/60 border border-slate-700 rounded-lg cursor-pointer hover:border-orange-500 transition-colors">
+                            <input type="checkbox" name="persistence-method" value="registry" class="w-4 h-4" />
+                            <div class="flex flex-col">
+                              <span class="text-sm text-slate-200">Registry (HKCU Run key)</span>
+                              <span class="text-xs text-slate-500">Adds a Run key under HKCU — no admin required</span>
+                            </div>
+                          </label>
+                          <label class="flex items-center gap-2 p-2 bg-slate-800/60 border border-slate-700 rounded-lg cursor-pointer hover:border-orange-500 transition-colors">
+                            <input type="checkbox" name="persistence-method" value="taskscheduler" class="w-4 h-4" />
+                            <div class="flex flex-col">
+                              <span class="text-sm text-slate-200">Task Scheduler (ONLOGON)</span>
+                              <span class="text-xs text-slate-500 text-orange-400/80">Requires admin privileges</span>
+                            </div>
+                          </label>
+                          <label class="flex items-center gap-2 p-2 bg-slate-800/60 border border-slate-700 rounded-lg cursor-pointer hover:border-orange-500 transition-colors">
+                            <input type="checkbox" name="persistence-method" value="wmi" class="w-4 h-4" />
+                            <div class="flex flex-col">
+                              <span class="text-sm text-slate-200">WMI Subscription</span>
+                              <span class="text-xs text-slate-500 text-orange-400/80">Requires admin privileges</span>
+                            </div>
+                          </label>
+                        </div>
                         <div class="mt-3">
                           <div class="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-2">
                             <i class="fa-solid fa-file-signature text-blue-400"></i> Startup File Name
@@ -333,7 +357,7 @@
                             pattern="[A-Za-z0-9_-]+"
                             placeholder="ovd (default)"
                             class="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-orange-500 transition-colors placeholder:text-slate-600" />
-                          <p class="text-xs text-slate-500 mt-1">Custom name for the startup executable (e.g. <code>svchost</code> → <code>svchost.exe</code>). Leave blank for default randomized name.</p>
+                          <p class="text-xs text-slate-500 mt-1">Custom executable name used by all selected methods (e.g. <code>svchost</code> → <code>svchost.exe</code>). Leave blank for default randomized name.</p>
                         </div>
                       </div>
 

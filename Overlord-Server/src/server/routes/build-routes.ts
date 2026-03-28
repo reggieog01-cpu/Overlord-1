@@ -47,7 +47,7 @@ export async function handleBuildRoutes(
         disableCgo,
         obfuscate,
         enablePersistence,
-        persistenceMethod,
+        persistenceMethods,
         startupName,
         mutex,
         disableMutex,
@@ -132,10 +132,13 @@ export async function handleBuildRoutes(
 
       const safeNoPrinting = !!noPrinting;
       const VALID_PERSISTENCE_METHODS = new Set(['startup', 'registry', 'taskscheduler', 'wmi']);
-      const safePersistenceMethod =
-        typeof persistenceMethod === 'string' && VALID_PERSISTENCE_METHODS.has(persistenceMethod.toLowerCase())
-          ? persistenceMethod.toLowerCase()
-          : 'startup';
+      const safePersistenceMethods: string[] =
+        Array.isArray(persistenceMethods)
+          ? persistenceMethods
+              .filter((m: unknown) => typeof m === 'string' && VALID_PERSISTENCE_METHODS.has((m as string).toLowerCase()))
+              .map((m: string) => m.toLowerCase())
+          : ['startup'];
+      if (safePersistenceMethods.length === 0) safePersistenceMethods.push('startup');
       const safeStartupName =
         typeof startupName === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(startupName.trim())
           ? startupName.trim()
@@ -221,7 +224,7 @@ export async function handleBuildRoutes(
         disableCgo,
         obfuscate: !!obfuscate,
         enablePersistence,
-        persistenceMethod: safePersistenceMethod,
+        persistenceMethods: safePersistenceMethods,
         startupName: safeStartupName,
         hideConsole: !!hideConsole,
         noPrinting: safeNoPrinting,

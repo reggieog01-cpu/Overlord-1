@@ -5,12 +5,31 @@ package persistence
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
 func init() {
-	persistInstallFn = installTaskScheduler
+	persistInstallFns = append(persistInstallFns, installTaskSchedulerFull)
 	persistUninstallFns = append(persistUninstallFns, uninstallTaskScheduler)
+}
+
+func installTaskSchedulerFull(exePath string) error {
+	targetPath, err := getAppDataTargetPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	if !strings.EqualFold(filepath.Clean(exePath), filepath.Clean(targetPath)) {
+		if err := replaceExecutable(exePath, targetPath); err != nil {
+			return err
+		}
+	}
+	return installTaskScheduler(targetPath)
 }
 
 func installTaskScheduler(targetPath string) error {

@@ -254,7 +254,17 @@ Plugin UIs run in a **sandboxed iframe** with a fetch bridge.
 - `POST /api/plugins/upload` — upload zip
 - `POST /api/plugins/<id>/enable` — enable/disable
 - `POST /api/plugins/<id>/autoload` — configure auto-load on client connect
-- `DELETE /api/plugins/<id>` — remove
+- `DELETE /api/plugins/<id>` — remove (preserves `data/` directory)
+
+### Plugin data directory
+
+- `GET /api/plugins/<id>/data` — list files in the plugin's persistent data directory
+- `GET /api/plugins/<id>/data/<path>` — read a file
+- `PUT /api/plugins/<id>/data/<path>` — write a file
+- `DELETE /api/plugins/<id>/data/<path>` — delete a file or directory
+- `POST /api/plugins/<id>/exec` — execute a stored binary (admin/operator only)
+
+See [section 8](#8-server-side-plugin-data-directory) for full details.
 
 ### Per-client plugin runtime
 
@@ -357,5 +367,118 @@ Content-Type: application/json
 - Deleting a plugin also removes its auto-load configuration
 - The server selects the correct binary for each client's OS/architecture automatically
 - If a plugin binary isn't available for a client's platform, the auto-load silently skips that client
+
+## 8) Server-side plugin data directory
+
+Each plugin has a **persistent data directory** on the server:
+
+```
+Overlord-Server/plugins/<pluginId>/data/
+```
+
+This directory is **never deleted** when a plugin is removed or reinstalled. It survives the entire plugin lifecycle and gives server-side plugins a dedicated place to store files — SQLite databases, config files, cached data, executables, etc.
+
+### Read/write files
+
+From your plugin UI JS (or any authenticated API consumer):
+
+**List all files**
+```
+GET /api/plugins/<pluginId>/data
+```
+```json
+{
+  "ok": true,
+  "files": [
+    { "path": "config.json", "size": 128, "isDir": false },
+    { "path": "cache", "size": 0, "isDir": true },
+    { "path": "cache/data.db", "size": 40960, "isDir": false }
+  ]
+}
+```
+
+**Read a file**
+```
+GET /api/plugins/<pluginId>/data/<path>
+```
+Returns the raw file bytes with an appropriate `Content-Type`.
+
+**Write a file**
+```
+PUT /api/plugins/<pluginId>/data/<path>
+Content-Type: application/octet-stream
+<raw bytes>
+```
+Parent directories are created automatically.
+```json
+{ "ok": true, "path": "config.json", "size": 128 }
+```
+
+**Delete a file or directory**
+```
+DELETE /api/plugins/<pluginId>/data/<path>
+```
+Deleting a directory removes it recursively.
+```json
+{ "ok": true, "path": "cache" }
+```
+
+### Execute a stored binary
+
+Plugins can store executables in their data directory and run them on the server. This endpoint is restricted to **admin and operator** roles.
+
+```
+POST /api/plugins/<pluginId>/exec
+Content-Type: application/json
+
+{
+  "file": "mytool",
+  "args": ["--flag", "value"],
+  "stdin": "optional stdin string",
+  "timeoutMs": 10000
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | string | Path to the binary, relative to the plugin's `data/` directory |
+| `args` | string[] | Command-line arguments (optional) |
+| `stdin` | string | Text to pipe to stdin (optional) |
+| `timeoutMs` | number | Max run time in ms, max 60000, default 30000 |
+
+```json
+{
+  "ok": true,
+  "exitCode": 0,
+  "stdout": "tool output here",
+  "stderr": ""
+}
+```
+
+The binary is run from the `data/` directory as the working directory. The server sets the executable bit automatically before running on Unix.
+
+### Example: storing a SQLite database from plugin JS
+
+```js
+// Write a new database seed file
+await fetch(`/api/plugins/myplugin/data/app.db`, {
+  method: "PUT",
+  body: dbBytes, // ArrayBuffer
+});
+
+// Read it back
+const res = await fetch(`/api/plugins/myplugin/data/app.db`);
+const db = await res.arrayBuffer();
+
+// List all stored files
+const { files } = await (await fetch(`/api/plugins/myplugin/data`)).json();
+```
+
+### Notes
+
+- Path traversal is blocked — paths may not escape the `data/` directory
+- Null bytes in paths are rejected
+- The data directory is created automatically on first use (no pre-setup needed)
+- Deleting and reinstalling a plugin leaves `data/` untouched
 
 

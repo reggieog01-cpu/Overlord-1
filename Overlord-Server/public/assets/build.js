@@ -83,6 +83,107 @@ function updateWindowsSectionVisibility() {
   windowsSection.classList.toggle("hidden", !hasWindows);
 }
 
+const BUILD_SETTINGS_KEY = "overlord_build_settings";
+
+function saveFormSettings() {
+  try {
+    const settings = {
+      platforms: Array.from(document.querySelectorAll('input[name="platform"]')).map((el) => ({ value: el.value, checked: el.checked })),
+      serverUrl: document.getElementById("server-url")?.value ?? "",
+      rawServerList: document.getElementById("raw-server-list")?.checked ?? false,
+      outputName: document.getElementById("output-name")?.value ?? "",
+      mutex: document.getElementById("mutex")?.value ?? "",
+      disableMutex: document.querySelector('input[name="disable-mutex"]')?.checked ?? false,
+      stripDebug: document.querySelector('input[name="strip-debug"]')?.checked ?? true,
+      disableCgo: document.querySelector('input[name="disable-cgo"]')?.checked ?? false,
+      noPrinting: document.querySelector('input[name="no-printing"]')?.checked ?? false,
+      obfuscate: document.querySelector('input[name="obfuscate"]')?.checked ?? false,
+      garbleLiterals: document.querySelector('input[name="garble-literals"]')?.checked ?? false,
+      garbleTiny: document.querySelector('input[name="garble-tiny"]')?.checked ?? false,
+      garbleSeed: document.getElementById("garble-seed")?.value ?? "",
+      enableUpx: document.querySelector('input[name="enable-upx"]')?.checked ?? false,
+      upxStripHeaders: document.querySelector('input[name="upx-strip-headers"]')?.checked ?? false,
+      sleepSeconds: document.getElementById("sleep-seconds")?.value ?? "0",
+      enablePersistence: document.querySelector('input[name="enable-persistence"]')?.checked ?? false,
+      persistenceMethods: Array.from(document.querySelectorAll('input[name="persistence-method"]:checked')).map((el) => el.value),
+      startupName: document.getElementById("startup-name")?.value ?? "",
+      hideConsole: document.querySelector('input[name="hide-console"]')?.checked ?? false,
+      requireAdmin: document.querySelector('input[name="require-admin"]')?.checked ?? false,
+      assemblyTitle: document.getElementById("assembly-title")?.value ?? "",
+      assemblyProduct: document.getElementById("assembly-product")?.value ?? "",
+      assemblyCompany: document.getElementById("assembly-company")?.value ?? "",
+      assemblyVersion: document.getElementById("assembly-version")?.value ?? "",
+      assemblyCopyright: document.getElementById("assembly-copyright")?.value ?? "",
+      outputExtension: document.getElementById("output-extension")?.value ?? ".exe",
+    };
+    localStorage.setItem(BUILD_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (err) {
+    console.error("Failed to save form settings:", err);
+  }
+}
+
+function restoreFormSettings() {
+  try {
+    const raw = localStorage.getItem(BUILD_SETTINGS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
+    const setCb = (sel, val) => { const el = document.querySelector(sel); if (el && val !== undefined) el.checked = val; };
+
+    if (Array.isArray(s.platforms)) {
+      s.platforms.forEach(({ value, checked }) => {
+        const el = document.querySelector(`input[name="platform"][value="${value}"]`);
+        if (el) el.checked = checked;
+      });
+    }
+    if (s.serverUrl !== undefined) setVal("server-url", s.serverUrl);
+    if (s.rawServerList !== undefined) setCb("#raw-server-list", s.rawServerList);
+    if (s.outputName !== undefined) setVal("output-name", s.outputName);
+    if (s.mutex !== undefined) setVal("mutex", s.mutex);
+    if (s.disableMutex !== undefined) setCb('input[name="disable-mutex"]', s.disableMutex);
+    if (s.stripDebug !== undefined) setCb('input[name="strip-debug"]', s.stripDebug);
+    if (s.disableCgo !== undefined) setCb('input[name="disable-cgo"]', s.disableCgo);
+    if (s.noPrinting !== undefined) setCb('input[name="no-printing"]', s.noPrinting);
+    if (s.obfuscate !== undefined) setCb('input[name="obfuscate"]', s.obfuscate);
+    if (s.garbleLiterals !== undefined) setCb('input[name="garble-literals"]', s.garbleLiterals);
+    if (s.garbleTiny !== undefined) setCb('input[name="garble-tiny"]', s.garbleTiny);
+    if (s.garbleSeed !== undefined) setVal("garble-seed", s.garbleSeed);
+    if (s.enableUpx !== undefined) setCb('input[name="enable-upx"]', s.enableUpx);
+    if (s.upxStripHeaders !== undefined) setCb('input[name="upx-strip-headers"]', s.upxStripHeaders);
+    if (s.sleepSeconds !== undefined) setVal("sleep-seconds", s.sleepSeconds);
+    if (s.enablePersistence !== undefined) setCb('input[name="enable-persistence"]', s.enablePersistence);
+    if (Array.isArray(s.persistenceMethods)) {
+      document.querySelectorAll('input[name="persistence-method"]').forEach((el) => {
+        el.checked = s.persistenceMethods.includes(el.value);
+      });
+    }
+    if (s.startupName !== undefined) setVal("startup-name", s.startupName);
+    if (s.hideConsole !== undefined) setCb('input[name="hide-console"]', s.hideConsole);
+    if (s.requireAdmin !== undefined) setCb('input[name="require-admin"]', s.requireAdmin);
+    if (s.assemblyTitle !== undefined) setVal("assembly-title", s.assemblyTitle);
+    if (s.assemblyProduct !== undefined) setVal("assembly-product", s.assemblyProduct);
+    if (s.assemblyCompany !== undefined) setVal("assembly-company", s.assemblyCompany);
+    if (s.assemblyVersion !== undefined) setVal("assembly-version", s.assemblyVersion);
+    if (s.assemblyCopyright !== undefined) setVal("assembly-copyright", s.assemblyCopyright);
+    if (s.outputExtension !== undefined) setVal("output-extension", s.outputExtension);
+
+    const restoredObfuscate = document.querySelector('input[name="obfuscate"]');
+    const garbleContainer = document.getElementById("garble-settings-container");
+    if (restoredObfuscate && garbleContainer) {
+      garbleContainer.classList.toggle("hidden", !restoredObfuscate.checked);
+    }
+    const restoredUpx = document.querySelector('input[name="enable-upx"]');
+    const upxContainer = document.getElementById("upx-settings-container");
+    if (restoredUpx && upxContainer) {
+      upxContainer.classList.toggle("hidden", !restoredUpx.checked);
+    }
+  } catch (err) {
+    console.error("Failed to restore form settings:", err);
+  }
+}
+
+restoreFormSettings();
 initAccordions();
 updateWindowsSectionVisibility();
 init();
@@ -168,6 +269,9 @@ platformInputs.forEach((input) => {
 });
 
 updatePersistenceSettingsVisibility();
+
+form?.addEventListener("change", saveFormSettings);
+form?.addEventListener("input", saveFormSettings);
 
 const obfuscateCheckbox = document.querySelector('input[name="obfuscate"]');
 const garbleSettingsContainer = document.getElementById("garble-settings-container");
@@ -459,8 +563,8 @@ form?.addEventListener("submit", async (e) => {
     'input[name="enable-persistence"]',
   ).checked;
   const hasWindowsTarget = platforms.some((platform) => platform.startsWith("windows-"));
-  const persistenceMethod = hasWindowsTarget
-    ? form.querySelector("#persistence-method")?.value || "startup"
+  const persistenceMethods = hasWindowsTarget
+    ? Array.from(form.querySelectorAll('input[name="persistence-method"]:checked')).map((el) => el.value)
     : undefined;
   const startupNameVal = hasWindowsTarget
     ? (form.querySelector("#startup-name")?.value.trim() || "")
@@ -496,7 +600,7 @@ form?.addEventListener("submit", async (e) => {
     disableCgo,
     obfuscate,
     enablePersistence,
-    persistenceMethod: enablePersistence && hasWindowsTarget ? persistenceMethod : undefined,
+    persistenceMethods: enablePersistence && hasWindowsTarget ? (persistenceMethods && persistenceMethods.length > 0 ? persistenceMethods : ['startup']) : undefined,
     startupName: enablePersistence && hasWindowsTarget && startupNameVal ? startupNameVal : undefined,
     hideConsole,
     noPrinting,
@@ -682,7 +786,7 @@ async function streamBuildOutput(buildId, config = {}) {
               displayBuild(buildData);
             }
 
-            reader.releaseLock();
+            reader.cancel();
             return;
           } else if (data.type === "error") {
             addBuildOutput(`\nERROR: ${data.error}\n`, "error");

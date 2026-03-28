@@ -19,7 +19,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go (latest stable version)
-ENV GO_VERSION=1.25.6
+ENV GO_VERSION=1.26.1
 ARG TARGETARCH
 RUN case "${TARGETARCH}" in \
         amd64) GO_ARCH=amd64 ;; \

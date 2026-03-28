@@ -76,65 +76,72 @@ func TestIsOverlordRunValueName(t *testing.T) {
 	}
 }
 
-func TestActiveMethod(t *testing.T) {
-	orig := DefaultPersistenceMethod
-	t.Cleanup(func() { DefaultPersistenceMethod = orig })
+func TestGetTargetPath_NonStartupMethodsUseAppDataBinaryDir(t *testing.T) {
+	origFns := persistInstallFns
+	origHas := hasStartupMethod
+	t.Cleanup(func() {
+		persistInstallFns = origFns
+		hasStartupMethod = origHas
+	})
 
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"startup", "startup"},
-		{"registry", "registry"},
-		{"taskscheduler", "taskscheduler"},
-		{"wmi", "wmi"},
-		{"REGISTRY", "registry"},
-		{"TaskScheduler", "taskscheduler"},
-		{"WMI", "wmi"},
-		{"", "startup"},
-		{"unknown", "startup"},
-		{"  registry  ", "registry"},
+	// Simulate a non-startup method registered (e.g. registry).
+	hasStartupMethod = false
+	persistInstallFns = []func(string) error{func(string) error { return nil }}
+
+	appData := t.TempDir()
+	t.Setenv("APPDATA", appData)
+
+	got, err := getTargetPath()
+	if err != nil {
+		t.Fatalf("getTargetPath() error: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			DefaultPersistenceMethod = tt.in
-			if got := activeMethod(); got != tt.want {
-				t.Fatalf("activeMethod() = %q, want %q (input=%q)", got, tt.want, tt.in)
-			}
-		})
+	wantDir := filepath.Join(appData, appDataBinaryDir)
+	if !strings.EqualFold(filepath.Clean(filepath.Dir(got)), filepath.Clean(wantDir)) {
+		t.Fatalf("expected dir %q, got %q", wantDir, filepath.Dir(got))
+	}
+	base := strings.ToLower(filepath.Base(got))
+	if !strings.HasPrefix(base, executablePrefix()) || !strings.HasSuffix(base, ".exe") {
+		t.Fatalf("expected ovd_*.exe name, got %q", filepath.Base(got))
 	}
 }
 
-func TestGetTargetPath_NonStartupMethodsUseAppDataBinaryDir(t *testing.T) {
-	orig := DefaultPersistenceMethod
-	t.Cleanup(func() { DefaultPersistenceMethod = orig })
+func TestGetTargetPath_StartupMethodTakesPriorityOverOthers(t *testing.T) {
+	origFns := persistInstallFns
+	origHas := hasStartupMethod
+	t.Cleanup(func() {
+		persistInstallFns = origFns
+		hasStartupMethod = origHas
+	})
 
-	for _, method := range []string{"registry", "taskscheduler", "wmi"} {
-		t.Run(method, func(t *testing.T) {
-			DefaultPersistenceMethod = method
-			appData := t.TempDir()
-			t.Setenv("APPDATA", appData)
+	// Simulate startup + another method both registered.
+	hasStartupMethod = true
+	persistInstallFns = []func(string) error{
+		func(string) error { return nil },
+		func(string) error { return nil },
+	}
 
-			got, err := getTargetPath()
-			if err != nil {
-				t.Fatalf("getTargetPath() error: %v", err)
-			}
-			wantDir := filepath.Join(appData, appDataBinaryDir)
-			if !strings.EqualFold(filepath.Clean(filepath.Dir(got)), filepath.Clean(wantDir)) {
-				t.Fatalf("method=%q: expected dir %q, got %q", method, wantDir, filepath.Dir(got))
-			}
-			base := strings.ToLower(filepath.Base(got))
-			if !strings.HasPrefix(base, executablePrefix()) || !strings.HasSuffix(base, ".exe") {
-				t.Fatalf("method=%q: expected ovd_*.exe name, got %q", method, filepath.Base(got))
-			}
-		})
+	appData := t.TempDir()
+	t.Setenv("APPDATA", appData)
+
+	got, err := getTargetPath()
+	if err != nil {
+		t.Fatalf("getTargetPath() error: %v", err)
+	}
+	wantDir := filepath.Join(appData, startupFolderRelative)
+	if !strings.EqualFold(filepath.Clean(filepath.Dir(got)), filepath.Clean(wantDir)) {
+		t.Fatalf("expected startup dir %q, got %q", wantDir, filepath.Dir(got))
 	}
 }
 
 func TestGetTargetPath_PrefersExistingBinary_AppDataDir(t *testing.T) {
-	orig := DefaultPersistenceMethod
-	t.Cleanup(func() { DefaultPersistenceMethod = orig })
-	DefaultPersistenceMethod = "registry"
+	origFns := persistInstallFns
+	origHas := hasStartupMethod
+	t.Cleanup(func() {
+		persistInstallFns = origFns
+		hasStartupMethod = origHas
+	})
+	hasStartupMethod = false
+	persistInstallFns = []func(string) error{func(string) error { return nil }}
 
 	appData := t.TempDir()
 	t.Setenv("APPDATA", appData)
