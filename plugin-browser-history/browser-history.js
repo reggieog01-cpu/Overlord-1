@@ -1,3 +1,5 @@
+document.addEventListener("DOMContentLoaded", function () {
+
 const params       = new URLSearchParams(window.location.search);
 let parentParams   = new URLSearchParams("");
 try { parentParams = new URLSearchParams(window.parent.location.search); } catch (_) {}
@@ -251,7 +253,6 @@ function handleIncomingEvent(event, payload) {
     const scannedAt    = payload?.scannedAt ?? "";
 
     log(`Scan complete at ${scannedAt} \u2014 ${total} URL(s) \u00B7 ${pwdTotal} password(s) \u00B7 ${profileTotal} profile(s) \u00B7 ${cardTotal} card(s)`);
-
     setStatus(`${pwdTotal} pwd \u00B7 ${profileTotal} profiles \u00B7 ${cardTotal} cards \u00B7 ${total} URLs`, "status-found");
 
     renderPasswords(passwords, pwdTotal);
@@ -301,3 +302,5 @@ if (!clientId) {
   setStatus("Awaiting auto-scan\u2026", "status-scanning");
   startPolling();
 }
+
+}); // end DOMContentLoaded
