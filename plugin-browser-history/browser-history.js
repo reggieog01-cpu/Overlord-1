@@ -13,7 +13,12 @@ const cardsArea         = document.getElementById("cards-area");
 const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
-const clientId = params.get("clientId") || "";
+
+// Try frame URL first, then fall back to parent URL
+let clientId = params.get("clientId") || "";
+if (!clientId) {
+  try { clientId = new URLSearchParams(window.parent.location.search).get("clientId") || ""; } catch (_) {}
+}
 clientIdInput.value = clientId;
 
 let pollTimer = null;
@@ -35,9 +40,10 @@ function setStatus(text, cls) {
 // ─── API helpers ───────────────────────────────────────────────────────────────
 
 async function sendPluginEvent(event, payload) {
-  if (!clientId) { log("Missing clientId"); return; }
+  const id = clientIdInput.value.trim() || clientId;
+  if (!id) { log("Missing clientId"); return; }
   const res = await fetch(
-    `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/event`,
+    `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/event`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -51,10 +57,11 @@ async function sendPluginEvent(event, payload) {
 }
 
 async function pollEvents() {
-  if (!clientId) return;
+  const id = clientIdInput.value.trim() || clientId;
+  if (!id) return;
   try {
     const res = await fetch(
-      `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`,
+      `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/events`,
       { method: "GET" }
     );
     if (!res.ok) { log(`poll failed: ${res.status}`); return; }
@@ -276,7 +283,9 @@ function stopPolling() {
 // ─── Scan button ──────────────────────────────────────────────────────────────
 
 scanBtn.addEventListener("click", async () => {
-  if (!clientId) { log("No clientId in URL"); return; }
+  const id = clientIdInput.value.trim();
+  if (!id) { log("No clientId — enter a Client ID first"); return; }
+  if (id !== clientId) { clientId = id; }
   scanBtn.disabled = true;
   setStatus("Scanning\u2026", "status-scanning");
   log("Manual scan triggered");
