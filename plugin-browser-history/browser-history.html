@@ -4,55 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Browser History &amp; Passwords</title>
-    <style>
-:root { color-scheme: dark; }
-* { box-sizing: border-box; }
-body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #0f1115; color: #e8ecf1; }
-.container { max-width: 820px; margin: 40px auto; padding: 0 20px; }
-.header h1 { margin: 0 0 4px 0; font-size: 28px; }
-.sub { margin: 0 0 24px 0; color: #9aa4b2; }
-.card { background: #161a22; border: 1px solid #222938; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-.card h2 { margin: 0 0 14px 0; font-size: 15px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.06em; }
-.row { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
-.label { color: #9aa4b2; font-size: 14px; }
-.input { padding: 10px 12px; border-radius: 8px; border: 1px solid #2a3346; background: #0f131b; color: #e8ecf1; font-size: 13px; }
-.input[readonly] { opacity: 0.7; cursor: default; }
-.actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
-.btn { background: #3b82f6; color: #fff; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
-.btn:hover { background: #2563eb; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
-.status-idle { background: #1a2030; border-color: #2a3346; color: #9aa4b2; }
-.status-scanning { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #60a5fa; }
-.status-found { background: rgba(96,165,250,0.12); border-color: rgba(96,165,250,0.4); color: #60a5fa; }
-.status-clean { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); color: #4ade80; }
-.results-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.results-header h2 { margin: 0; }
-.count-badge { background: rgba(96,165,250,0.15); border: 1px solid rgba(96,165,250,0.4); color: #60a5fa; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
-.count-badge.hidden { display: none; }
-.empty-msg { color: #9aa4b2; font-size: 14px; margin: 0; padding: 16px 0; }
-.category-group { margin-bottom: 20px; }
-.category-group:last-child { margin-bottom: 0; }
-.category-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 0 8px 0; margin: 0 0 8px 0; border-bottom: 1px solid #222938; display: flex; align-items: center; gap: 8px; }
-.cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.cat-letter { color: #60a5fa; } .cat-letter .cat-dot { background: #3b82f6; }
-.cat-pwd { color: #f87171; } .cat-pwd .cat-dot { background: #ef4444; }
-.cat-profile { color: #4ade80; } .cat-profile .cat-dot { background: #22c55e; }
-.cat-card { color: #c084fc; } .cat-card .cat-dot { background: #a855f7; }
-.password-cell { color: #fbbf24; font-family: "Consolas","Courier New",monospace; font-size: 12px; }
-.card-number-cell { color: #c084fc; font-family: "Consolas","Courier New",monospace; font-size: 12px; }
-.wallet-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.wallet-table th { text-align: left; color: #9aa4b2; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 8px 8px 8px; border-bottom: 1px solid #222938; }
-.wallet-table td { padding: 7px 8px; border-bottom: 1px solid #1a1f2b; vertical-align: top; word-break: break-all; }
-.wallet-table tr:last-child td { border-bottom: none; }
-.wallet-table tr:hover td { background: rgba(255,255,255,0.02); }
-.url-cell a { color: #60a5fa; text-decoration: none; }
-.url-cell a:hover { text-decoration: underline; }
-.title-cell { color: #e8ecf1; }
-.source-cell { color: #9aa4b2; font-size: 11px; white-space: nowrap; }
-.no-wallets { color: #4ade80; font-size: 14px; padding: 16px 0; margin: 0; }
-.log { min-height: 120px; background: #0f131b; border-radius: 8px; border: 1px solid #2a3346; padding: 12px; white-space: pre-wrap; font-size: 12px; font-family: "Consolas","Courier New",monospace; color: #9aa4b2; margin: 0; }
-    </style>
+    <link rel="stylesheet" href="/plugins/browser-history/assets/browser-history.css" />
   </head>
   <body>
     <main class="container">

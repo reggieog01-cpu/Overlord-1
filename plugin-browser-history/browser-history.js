@@ -1,9 +1,7 @@
-const params       = new URLSearchParams(window.location.search);
-let parentParams   = new URLSearchParams("");
-try { parentParams = new URLSearchParams(window.parent.location.search); } catch (_) {}
-const clientIdInput   = document.getElementById("client-id");
-const scanBtn         = document.getElementById("scan-btn");
-const statusPill      = document.getElementById("status-pill");
+const params            = new URLSearchParams(window.location.search);
+const clientIdInput     = document.getElementById("client-id");
+const scanBtn           = document.getElementById("scan-btn");
+const statusPill        = document.getElementById("status-pill");
 const countBadge        = document.getElementById("count-badge");
 const pwdCountBadge     = document.getElementById("pwd-count-badge");
 const profileCountBadge = document.getElementById("profile-count-badge");
@@ -15,7 +13,7 @@ const cardsArea         = document.getElementById("cards-area");
 const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
-const clientId = params.get("clientId") || parentParams.get("clientId") || "";
+const clientId = params.get("clientId") || "";
 clientIdInput.value = clientId;
 
 let pollTimer = null;
@@ -287,9 +285,6 @@ scanBtn.addEventListener("click", async () => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-
-log("frame URL: " + window.location.href);
-try { log("parent URL: " + window.parent.location.href); } catch (_) { log("parent URL: (inaccessible)"); }
 
 if (!clientId) {
   log("No clientId provided in URL \u2014 open this page from a client context");
