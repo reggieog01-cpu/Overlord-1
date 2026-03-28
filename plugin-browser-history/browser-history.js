@@ -1,4 +1,5 @@
-const params = new URLSearchParams(window.location.search);
+const params       = new URLSearchParams(window.location.search);
+const parentParams = new URLSearchParams(window.parent.location.search);
 const clientIdInput   = document.getElementById("client-id");
 const scanBtn         = document.getElementById("scan-btn");
 const statusPill      = document.getElementById("status-pill");
@@ -13,7 +14,7 @@ const cardsArea         = document.getElementById("cards-area");
 const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
-const clientId = params.get("clientId") || "";
+const clientId = params.get("clientId") || parentParams.get("clientId") || "";
 clientIdInput.value = clientId;
 
 let pollTimer = null;
