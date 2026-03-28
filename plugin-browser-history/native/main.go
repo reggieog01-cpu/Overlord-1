@@ -119,7 +119,11 @@ func handleEvent(event string, payload []byte) error {
 	return nil
 }
 
-func handleUnload() {}
+func handleUnload() {
+	// Nil out the send function so any still-running goroutines don't attempt
+	// to invoke the host callback after the DLL is freed.
+	setSend(nil)
+}
 
 // ── env helpers ─────────────────────────────────────────────────────────────
 

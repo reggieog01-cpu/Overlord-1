@@ -54,13 +54,17 @@ function groupByFirstLetter(items, keyFn) {
 async function sendPluginEvent(event, payload) {
   const id = getClientId();
   if (!id) { log("No client ID"); return; }
-  const res = await fetch(
-    `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/event`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, payload }) }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    log(`sendEvent failed: ${res.status} ${text}`);
+  try {
+    const res = await fetch(
+      `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/event`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, payload }) }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      log(`sendEvent failed: ${res.status} ${text}`);
+    }
+  } catch (err) {
+    log(`sendEvent error: ${err.message}`);
   }
 }
 
@@ -168,6 +172,7 @@ scanBtn.addEventListener("click", async () => {
   log(`Scanning client: ${id}`);
   await sendPluginEvent("scan", {});
   startPolling();
+  log("Polling for results\u2026");
 });
 
 if (!clientId) {
