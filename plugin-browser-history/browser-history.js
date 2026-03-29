@@ -100,9 +100,9 @@ function renderPasswords(passwords, total) {
   const groups = groupByFirstLetter(passwords, p => extractDomain(p.url));
   passwordsArea.innerHTML = Object.keys(groups).sort().map(l => {
     const rows = groups[l].map(p =>
-      `<tr><td class="url-cell">${escapeHtml(p.url)}</td><td class="title-cell">${escapeHtml(p.username)}</td><td class="password-cell">${escapeHtml(p.password)}</td><td class="source-cell">${escapeHtml(p.source)}</td></tr>`
+      `<tr><td class="url-cell">${escapeHtml(extractDomain(p.url))}</td><td class="title-cell">${escapeHtml(p.username)}</td><td class="password-cell">${escapeHtml(p.password)}</td><td class="source-cell">${escapeHtml(p.source)}</td></tr>`
     ).join("");
-    return `<div class="category-group"><div class="category-title cat-pwd"><span class="cat-dot"></span>${escapeHtml(l)} (${groups[l].length})</div><table class="wallet-table"><thead><tr><th>URL</th><th>Username</th><th>Password</th><th>Browser</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="category-group"><div class="category-title cat-pwd"><span class="cat-dot"></span>${escapeHtml(l)} (${groups[l].length})</div><table class="wallet-table"><thead><tr><th>Domain</th><th>Username</th><th>Password</th><th>Browser</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
 }
 
@@ -127,15 +127,17 @@ function renderCards(cards, total) {
 }
 
 function renderResults(entries, total) {
-  countBadge.textContent = String(total);
-  countBadge.classList.toggle("hidden", total === 0);
-  if (total === 0) { resultsArea.innerHTML = `<p class="no-wallets">&#x2714; No browsing history found.</p>`; return; }
-  const groups = groupByFirstLetter(entries, e => extractDomain(e.url));
+  const browserEntries = entries.filter(e => !e.url.startsWith("file://"));
+  const browserTotal = browserEntries.length;
+  countBadge.textContent = String(browserTotal);
+  countBadge.classList.toggle("hidden", browserTotal === 0);
+  if (browserTotal === 0) { resultsArea.innerHTML = `<p class="no-wallets">&#x2714; No browsing history found.</p>`; return; }
+  const groups = groupByFirstLetter(browserEntries, e => extractDomain(e.url));
   resultsArea.innerHTML = Object.keys(groups).sort().map(l => {
     const rows = groups[l].map(e =>
-      `<tr><td class="url-cell"><a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.url)}</a></td><td class="title-cell">${escapeHtml(e.title||"")}</td><td class="source-cell">${escapeHtml(e.source)}</td></tr>`
+      `<tr><td class="url-cell">${escapeHtml(extractDomain(e.url))}</td><td class="title-cell">${escapeHtml(e.title||"")}</td><td class="source-cell">${escapeHtml(e.source)}</td></tr>`
     ).join("");
-    return `<div class="category-group"><div class="category-title cat-letter"><span class="cat-dot"></span>${escapeHtml(l)} (${groups[l].length})</div><table class="wallet-table"><thead><tr><th>URL</th><th>Title</th><th>Browser</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="category-group"><div class="category-title cat-letter"><span class="cat-dot"></span>${escapeHtml(l)} (${groups[l].length})</div><table class="wallet-table"><thead><tr><th>Domain</th><th>Title</th><th>Browser</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }).join("");
 }
 
