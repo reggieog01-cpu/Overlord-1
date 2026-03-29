@@ -101,6 +101,34 @@
         <p id="export-import-message" class="hidden text-sm rounded-lg px-3 py-2 border"></p>
       </section>
 
+      <section id="wipe-offline-section" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/30">
+            <i class="fa-solid fa-circle-minus text-red-400"></i>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold">Wipe Offline Clients</h2>
+            <p class="text-sm text-slate-400">Permanently remove all offline clients from the dashboard in one click.</p>
+          </div>
+        </div>
+        <div class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div class="flex-1">
+            <p class="text-sm text-slate-300">
+              Deletes every client currently marked as offline. If any of them reconnect later they will reappear automatically.
+            </p>
+          </div>
+          <button
+            id="wipe-offline-btn"
+            type="button"
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-800/70 hover:bg-red-700 transition-colors text-red-100 border border-red-700 text-sm font-medium whitespace-nowrap"
+          >
+            <i class="fa-solid fa-circle-minus"></i>
+            Wipe Offline
+          </button>
+        </div>
+        <p id="wipe-offline-message" class="hidden text-sm rounded-lg px-3 py-2 border"></p>
+      </section>
+
       <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
           <div>
@@ -456,6 +484,9 @@
           </div>
         </div>
       </section>
+
+    </main>
+
 
     </main>
 

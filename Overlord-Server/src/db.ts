@@ -265,6 +265,11 @@ export function deleteClientRow(id: string) {
   db.run(`DELETE FROM clients WHERE id=?`, id);
 }
 
+export function deleteOfflineClientRows(): number {
+  const result = db.run(`DELETE FROM clients WHERE online=0`);
+  return (result as any)?.changes || 0;
+}
+
 export function getClientOnlineState(id: string): boolean | null {
   const row = db.query<{ online: number }>(`SELECT online FROM clients WHERE id=?`).get(id);
   if (!row) return null;

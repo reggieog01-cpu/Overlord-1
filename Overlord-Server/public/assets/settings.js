@@ -66,6 +66,10 @@ const exportSettingsBtn = document.getElementById("export-settings-btn");
 const importSettingsFile = document.getElementById("import-settings-file");
 const exportImportMessage = document.getElementById("export-import-message");
 
+const wipeOfflineSection = document.getElementById("wipe-offline-section");
+const wipeOfflineBtn = document.getElementById("wipe-offline-btn");
+const wipeOfflineMessage = document.getElementById("wipe-offline-message");
+
 let currentUser = null;
 let securityConfig = null;
 let tlsConfig = null;
@@ -774,6 +778,35 @@ async function importSettings(event) {
   }
 }
 
+async function wipeOfflineClients() {
+  if (!wipeOfflineMessage) return;
+  if (!confirm("Remove ALL offline clients from the dashboard?\n\nThey will reappear if they reconnect later.")) return;
+
+  wipeOfflineBtn.disabled = true;
+  wipeOfflineMessage.className = "hidden text-sm rounded-lg px-3 py-2 border";
+
+  try {
+    const res = await fetch("/api/clients/offline", {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      wipeOfflineMessage.textContent = data.error || "Failed to wipe offline clients.";
+      wipeOfflineMessage.className = "text-sm rounded-lg px-3 py-2 border text-rose-200 border-rose-700 bg-rose-900/30";
+    } else {
+      const n = data.count ?? 0;
+      wipeOfflineMessage.textContent = n === 0 ? "No offline clients found." : `Removed ${n} offline client${n === 1 ? "" : "s"}.`;
+      wipeOfflineMessage.className = "text-sm rounded-lg px-3 py-2 border text-emerald-200 border-emerald-700 bg-emerald-900/30";
+    }
+  } catch {
+    wipeOfflineMessage.textContent = "Request failed.";
+    wipeOfflineMessage.className = "text-sm rounded-lg px-3 py-2 border text-rose-200 border-rose-700 bg-rose-900/30";
+  } finally {
+    wipeOfflineBtn.disabled = false;
+  }
+}
+
 async function init() {
   try {
     await loadCurrentUser();
@@ -781,6 +814,10 @@ async function init() {
 
     if (isAdmin(currentUser?.role) && exportImportSection) {
       exportImportSection.classList.remove("hidden");
+    }
+
+    if (canManageClientBans(currentUser?.role) && wipeOfflineSection) {
+      wipeOfflineSection.classList.remove("hidden");
     }
 
     await loadSecurityPolicy();
@@ -798,6 +835,7 @@ async function init() {
     if (importSettingsFile) importSettingsFile.addEventListener("change", importSettings);
     refreshBansBtn.addEventListener("click", loadBannedIps);
     bansTableBody.addEventListener("click", handleUnbanClick);
+    if (wipeOfflineBtn) wipeOfflineBtn.addEventListener("click", wipeOfflineClients);
   } catch (error) {
     console.error("settings init failed", error);
     showMessage("Failed to load settings.", "error");

@@ -6,6 +6,7 @@ import {
   banIp,
   clientExists,
   deleteClientRow,
+  deleteOfflineClientRows,
   getClientOnlineState,
   getClientIp,
   isIpBanned,
@@ -236,6 +237,33 @@ export async function handleClientRoutes(
     }
     const success = await generateThumbnail(clientId);
     return Response.json({ ok: true, updated: success }, { headers: deps.CORS_HEADERS });
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/api/clients/offline") {
+    const user = await authenticateRequest(req);
+    if (!user) return new Response("Unauthorized", { status: 401 });
+
+    try {
+      requirePermission(user, "clients:control");
+    } catch (error) {
+      if (error instanceof Response) return error;
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const count = deleteOfflineClientRows();
+    notifyDashboardViewers();
+
+    const ip = server.requestIP(req)?.address || "unknown";
+    logAudit({
+      timestamp: Date.now(),
+      username: user.username,
+      ip,
+      action: AuditAction.COMMAND,
+      details: `wipe_offline_clients: removed ${count}`,
+      success: true,
+    });
+
+    return Response.json({ ok: true, count }, { headers: deps.CORS_HEADERS });
   }
 
   const clientDeleteMatch = url.pathname.match(/^\/api\/clients\/([^/]+)$/);
