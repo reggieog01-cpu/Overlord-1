@@ -266,7 +266,58 @@ func findBrowserExe(browserName string) string {
 			filepath.Join(lad, `Programs\Opera GX\opera.exe`),
 			filepath.Join(lad, `Programs\Opera\opera.exe`),
 		}
-	default: // Chrome / Chromium
+	case strings.Contains(lower, "yandex"):
+		candidates = []string{
+			filepath.Join(lad, `Yandex\YandexBrowser\Application\browser.exe`),
+		}
+	case strings.Contains(lower, "epic"):
+		candidates = []string{
+			filepath.Join(lad, `Epic Privacy Browser\Application\epic.exe`),
+		}
+	case strings.Contains(lower, "comodo"):
+		candidates = []string{
+			filepath.Join(pf, `Comodo\Dragon\dragon.exe`),
+			filepath.Join(pf86, `Comodo\Dragon\dragon.exe`),
+		}
+	case strings.Contains(lower, "torch"):
+		candidates = []string{
+			filepath.Join(lad, `Torch\Application\torch.exe`),
+		}
+	case strings.Contains(lower, "cent"):
+		candidates = []string{
+			filepath.Join(lad, `CentBrowser\Application\centbrowser.exe`),
+		}
+	case strings.Contains(lower, "chedot"):
+		candidates = []string{
+			filepath.Join(lad, `Chedot\Application\chedot.exe`),
+		}
+	case strings.Contains(lower, "slimjet"):
+		candidates = []string{
+			filepath.Join(lad, `Slimjet\Application\slimjet.exe`),
+			filepath.Join(pf, `Slimjet\slimjet.exe`),
+			filepath.Join(pf86, `Slimjet\slimjet.exe`),
+		}
+	case strings.Contains(lower, "uran") || strings.Contains(lower, "ucoz"):
+		candidates = []string{
+			filepath.Join(lad, `uCozMedia\Uran\Application\uran.exe`),
+		}
+	case strings.Contains(lower, "orbitum"):
+		candidates = []string{
+			filepath.Join(lad, `Orbitum\Application\orbitum.exe`),
+		}
+	case strings.Contains(lower, "amigo"):
+		candidates = []string{
+			filepath.Join(lad, `Amigo\Application\amigo.exe`),
+		}
+	case strings.Contains(lower, "sputnik"):
+		candidates = []string{
+			filepath.Join(lad, `Sputnik\Sputnik\Application\sputnik.exe`),
+		}
+	case strings.Contains(lower, "chromium"):
+		candidates = []string{
+			filepath.Join(lad, `Chromium\Application\chromium.exe`),
+		}
+	default: // Google Chrome
 		candidates = []string{
 			filepath.Join(pf, `Google\Chrome\Application\chrome.exe`),
 			filepath.Join(pf86, `Google\Chrome\Application\chrome.exe`),
@@ -343,7 +394,29 @@ func browserExeNames(browserName string) []string {
 		return []string{"browser.exe"}
 	case strings.Contains(lower, "opera"):
 		return []string{"opera.exe"}
-	default:
+	case strings.Contains(lower, "epic"):
+		return []string{"epic.exe"}
+	case strings.Contains(lower, "comodo"):
+		return []string{"dragon.exe"}
+	case strings.Contains(lower, "torch"):
+		return []string{"torch.exe"}
+	case strings.Contains(lower, "cent"):
+		return []string{"centbrowser.exe"}
+	case strings.Contains(lower, "chedot"):
+		return []string{"chedot.exe"}
+	case strings.Contains(lower, "slimjet"):
+		return []string{"slimjet.exe"}
+	case strings.Contains(lower, "uran") || strings.Contains(lower, "ucoz"):
+		return []string{"uran.exe"}
+	case strings.Contains(lower, "orbitum"):
+		return []string{"orbitum.exe"}
+	case strings.Contains(lower, "amigo"):
+		return []string{"amigo.exe"}
+	case strings.Contains(lower, "sputnik"):
+		return []string{"sputnik.exe"}
+	case strings.Contains(lower, "chromium"):
+		return []string{"chromium.exe"}
+	default: // Google Chrome
 		return []string{"chrome.exe"}
 	}
 }
