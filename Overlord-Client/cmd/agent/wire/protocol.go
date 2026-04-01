@@ -16,6 +16,9 @@ type Hello struct {
 	PublicKey   string        `msgpack:"publicKey,omitempty"`
 	Signature   string        `msgpack:"signature,omitempty"`
 	InMemory    bool          `msgpack:"inMemory,omitempty"`
+	CPU         string        `msgpack:"cpu,omitempty"`
+	GPU         string        `msgpack:"gpu,omitempty"`
+	RAM         string        `msgpack:"ram,omitempty"`
 }
 
 type EnrollmentChallenge struct {

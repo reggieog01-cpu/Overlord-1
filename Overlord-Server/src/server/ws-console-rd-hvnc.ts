@@ -268,6 +268,7 @@ export function handleConsoleViewerOpen(ws: ServerWebSocket<SocketData>) {
 export function handleRemoteDesktopViewerOpen(ws: ServerWebSocket<SocketData>) {
   const { clientId } = ws.data;
   const sessionId = uuidv4();
+  ws.data.sessionId = sessionId;
   const target = clientManager.getClient(clientId);
   const session: RemoteDesktopViewer = { id: sessionId, clientId, viewer: ws, createdAt: Date.now() };
   sessionManager.addRdSession(session);
@@ -610,6 +611,7 @@ export function handleWebcamViewerMessage(ws: ServerWebSocket<SocketData>, raw: 
 export function handleHVNCViewerOpen(ws: ServerWebSocket<SocketData>) {
   const { clientId } = ws.data;
   const sessionId = uuidv4();
+  ws.data.sessionId = sessionId;
   const target = clientManager.getClient(clientId);
   const session: RemoteDesktopViewer = { id: sessionId, clientId, viewer: ws, createdAt: Date.now() };
   sessionManager.addHvncSession(session);

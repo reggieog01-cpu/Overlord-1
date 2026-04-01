@@ -80,8 +80,8 @@
         </div>
 
         <!-- Clients Table -->
-        <div class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
-          <table class="w-full" id="enrollment-table">
+        <div class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-x-auto">
+          <table class="w-full min-w-[1200px]" id="enrollment-table">
             <thead class="bg-slate-800/50 border-b border-slate-700">
               <tr>
                 <th class="w-10 px-4 py-3">
@@ -90,6 +90,9 @@
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">Host</th>
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">User</th>
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">OS</th>
+                <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">CPU</th>
+                <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">GPU</th>
+                <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">RAM</th>
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">IP</th>
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">Country</th>
                 <th class="text-left px-4 py-3 text-sm font-semibold text-slate-300">Key Fingerprint</th>
@@ -100,7 +103,7 @@
             </thead>
             <tbody id="enrollment-body" class="divide-y divide-slate-800">
               <tr id="enrollment-loading">
-                <td colspan="10" class="px-6 py-12 text-center text-slate-500">
+                <td colspan="13" class="px-6 py-12 text-center text-slate-500">
                   <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading...
                 </td>
               </tr>

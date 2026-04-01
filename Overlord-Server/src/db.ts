@@ -67,6 +67,15 @@ try {
 try {
   db.run(`ALTER TABLE clients ADD COLUMN enrolled_by TEXT`);
 } catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN cpu TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN gpu TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN ram TEXT`);
+} catch {}
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_public_key ON clients(public_key);`,
 );
@@ -232,8 +241,8 @@ export function upsertClientRow(
 ) {
   const now = partial.lastSeen ?? Date.now();
   db.run(
-    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint, cpu, gpu, ram)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        hwid=COALESCE(excluded.hwid, clients.hwid),
        role=COALESCE(excluded.role, clients.role),
@@ -253,7 +262,10 @@ export function upsertClientRow(
        ping_ms=COALESCE(excluded.ping_ms, clients.ping_ms),
        enrollment_status=CASE WHEN excluded.enrollment_status <> 'pending' THEN excluded.enrollment_status ELSE clients.enrollment_status END,
        public_key=COALESCE(excluded.public_key, clients.public_key),
-       key_fingerprint=COALESCE(excluded.key_fingerprint, clients.key_fingerprint)
+       key_fingerprint=COALESCE(excluded.key_fingerprint, clients.key_fingerprint),
+       cpu=COALESCE(excluded.cpu, clients.cpu),
+       gpu=COALESCE(excluded.gpu, clients.gpu),
+       ram=COALESCE(excluded.ram, clients.ram)
     `,
     partial.id,
     partial.hwid ?? partial.id,
@@ -275,6 +287,9 @@ export function upsertClientRow(
     partial.enrollmentStatus ?? "pending",
     partial.publicKey ?? null,
     partial.keyFingerprint ?? null,
+    partial.cpu ?? null,
+    partial.gpu ?? null,
+    partial.ram ?? null,
   );
 
   if (partial.hwid) {
@@ -519,7 +534,7 @@ export function listClients(filters: ListFilters): ListResult {
 
   const rows = db
     .query<any>(
-      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint
+      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint, cpu, gpu, ram
        FROM clients
        ${whereSql}
        ${orderBy}
@@ -548,6 +563,9 @@ export function listClients(filters: ListFilters): ListResult {
     enrollmentStatus: c.enrollmentStatus || "pending",
     publicKey: c.publicKey || null,
     keyFingerprint: c.keyFingerprint || null,
+    cpu: c.cpu || null,
+    gpu: c.gpu || null,
+    ram: c.ram || null,
     thumbnail: getThumbnail(c.id),
   }));
 
