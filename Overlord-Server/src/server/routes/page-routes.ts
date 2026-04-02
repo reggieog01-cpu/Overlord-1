@@ -84,6 +84,7 @@ const QUERY_CLIENT_PAGES: QueryClientPageDef[] = [
   { path: "/webcam",        file: "webcam.html" },
   { path: "/hvnc",          file: "hvnc.html" },
   { path: "/voice",         file: "voice.html" },
+  { path: "/winre",         file: "winre.html" },
 ];
 
 /** Client-scoped pages accessed via path /:clientId/feature */

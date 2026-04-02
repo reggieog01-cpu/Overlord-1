@@ -97,7 +97,12 @@ export type CommandType =
   | "plugin_load_chunk"
   | "plugin_load_finish"
   | "plugin_unload"
-  | "agent_update";
+  | "agent_update"
+  | "clipboard_set"
+  | "clipboard_sync_start"
+  | "clipboard_sync_stop"
+  | "winre_install"
+  | "winre_uninstall";
 
 export type Command = {
   type: "command";

@@ -626,5 +626,225 @@ clearOutputBtn.addEventListener("click", () => {
     '<div class="text-slate-500">No commands dispatched yet.</div>';
 });
 
+const autoDeployNameInput = document.getElementById("auto-deploy-name");
+const autoDeployTriggerSelect = document.getElementById("auto-deploy-trigger");
+const autoDeployZone = document.getElementById("auto-deploy-zone");
+const autoDeployFileInput = document.getElementById("auto-deploy-file-input");
+const autoDeployFileStatus = document.getElementById("auto-deploy-file-status");
+const autoDeployArgsInput = document.getElementById("auto-deploy-args");
+const autoDeployHideWindow = document.getElementById("auto-deploy-hide-window");
+const autoDeploySaveBtn = document.getElementById("auto-deploy-save-btn");
+const autoDeployCancelBtn = document.getElementById("auto-deploy-cancel-btn");
+const autoDeployList = document.getElementById("auto-deploy-list");
+
+let autoDeployFile = null;
+let autoDeployEditId = null;
+
+if (autoDeployZone) {
+  autoDeployZone.addEventListener("click", () => autoDeployFileInput.click());
+  autoDeployZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    autoDeployZone.classList.add("border-cyan-500");
+  });
+  autoDeployZone.addEventListener("dragleave", () => {
+    autoDeployZone.classList.remove("border-cyan-500");
+  });
+  autoDeployZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    autoDeployZone.classList.remove("border-cyan-500");
+    const f = e.dataTransfer?.files?.[0];
+    if (f) {
+      autoDeployFile = f;
+      autoDeployFileStatus.textContent = `${f.name} (${formatBytes(f.size)})`;
+      autoDeployFileStatus.className = "mt-1 text-xs text-emerald-400";
+    }
+  });
+  autoDeployFileInput.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      autoDeployFile = f;
+      autoDeployFileStatus.textContent = `${f.name} (${formatBytes(f.size)})`;
+      autoDeployFileStatus.className = "mt-1 text-xs text-emerald-400";
+    }
+  });
+}
+
+function getAutoDeployOsFilter() {
+  const checked = [];
+  document.querySelectorAll('input[name="auto-deploy-os"]:checked').forEach((cb) => {
+    checked.push(cb.value);
+  });
+  return checked;
+}
+
+function clearAutoDeployOsFilter() {
+  document.querySelectorAll('input[name="auto-deploy-os"]').forEach((cb) => {
+    cb.checked = false;
+  });
+}
+
+function resetAutoDeployForm() {
+  autoDeployNameInput.value = "";
+  autoDeployTriggerSelect.value = "on_connect";
+  autoDeployArgsInput.value = "";
+  autoDeployHideWindow.checked = true;
+  autoDeployFile = null;
+  autoDeployFileInput.value = "";
+  autoDeployFileStatus.textContent = "No file selected";
+  autoDeployFileStatus.className = "mt-1 text-xs text-slate-400";
+  clearAutoDeployOsFilter();
+  autoDeployEditId = null;
+  autoDeployCancelBtn.classList.add("hidden");
+  autoDeploySaveBtn.innerHTML = '<i class="fa-solid fa-bolt"></i> Save Auto Start';
+}
+
+async function loadAutoDeploys() {
+  try {
+    const res = await fetch("/api/auto-deploys");
+    if (!res.ok) return;
+    const data = await res.json();
+    renderAutoDeployList(data.items || []);
+  } catch (err) {
+    console.error("Failed to load auto deploys:", err);
+  }
+}
+
+function triggerLabel(trigger) {
+  switch (trigger) {
+    case "on_connect": return "Every connect";
+    case "on_connect_once": return "Once per client";
+    case "on_first_connect": return "First connect only";
+    default: return trigger;
+  }
+}
+
+function renderAutoDeployList(items) {
+  if (items.length === 0) {
+    autoDeployList.innerHTML = '<div class="text-slate-500 text-sm">No auto start rules configured.</div>';
+    return;
+  }
+
+  autoDeployList.innerHTML = items
+    .map((item) => {
+      const osText = item.osFilter && item.osFilter.length > 0
+        ? item.osFilter.join(", ")
+        : "any";
+      const statusColor = item.enabled ? "text-emerald-400" : "text-slate-500";
+      const statusIcon = item.enabled ? "fa-circle-check" : "fa-circle-pause";
+      return `
+        <div class="flex items-center justify-between p-3 rounded-lg border border-slate-800 bg-slate-950/60" data-id="${escapeHtml(item.id)}">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid ${statusIcon} ${statusColor} text-sm"></i>
+              <span class="font-semibold text-slate-100 text-sm truncate">${escapeHtml(item.name)}</span>
+            </div>
+            <div class="text-xs text-slate-400 mt-1 flex flex-wrap gap-x-3">
+              <span><i class="fa-solid fa-file mr-1"></i>${escapeHtml(item.fileName)}</span>
+              <span><i class="fa-solid fa-bolt mr-1"></i>${triggerLabel(item.trigger)}</span>
+              <span><i class="fa-solid fa-desktop mr-1"></i>${escapeHtml(osText)}</span>
+              ${item.args ? `<span><i class="fa-solid fa-terminal mr-1"></i>${escapeHtml(item.args)}</span>` : ""}
+            </div>
+          </div>
+          <div class="flex items-center gap-2 ml-3 shrink-0">
+            <button class="auto-deploy-toggle px-2 py-1 rounded text-xs ${item.enabled ? 'bg-amber-700 hover:bg-amber-600' : 'bg-emerald-700 hover:bg-emerald-600'} text-white" data-id="${escapeHtml(item.id)}" data-enabled="${item.enabled}">
+              ${item.enabled ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>'}
+            </button>
+            <button class="auto-deploy-delete px-2 py-1 rounded text-xs bg-red-800 hover:bg-red-700 text-white" data-id="${escapeHtml(item.id)}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  autoDeployList.querySelectorAll(".auto-deploy-toggle").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const currentlyEnabled = btn.dataset.enabled === "true";
+      try {
+        const res = await fetch(`/api/auto-deploys/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !currentlyEnabled }),
+        });
+        if (res.ok) loadAutoDeploys();
+      } catch (err) {
+        console.error("Toggle failed:", err);
+      }
+    });
+  });
+
+  autoDeployList.querySelectorAll(".auto-deploy-delete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (!confirm("Delete this auto start rule?")) return;
+      try {
+        const res = await fetch(`/api/auto-deploys/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+        if (res.ok) loadAutoDeploys();
+      } catch (err) {
+        console.error("Delete failed:", err);
+      }
+    });
+  });
+}
+
+if (autoDeploySaveBtn) {
+  autoDeploySaveBtn.addEventListener("click", async () => {
+    const name = autoDeployNameInput.value.trim();
+    if (!name) {
+      alert("Please enter a task name.");
+      return;
+    }
+    if (!autoDeployFile) {
+      alert("Please select a file to deploy.");
+      return;
+    }
+
+    const trigger = autoDeployTriggerSelect.value;
+    const args = autoDeployArgsInput.value;
+    const hideWindow = autoDeployHideWindow.checked;
+    const osFilter = getAutoDeployOsFilter();
+
+    autoDeploySaveBtn.disabled = true;
+
+    try {
+      const form = new FormData();
+      form.append("file", autoDeployFile, autoDeployFile.name);
+      form.append("name", name);
+      form.append("trigger", trigger);
+      form.append("args", args);
+      form.append("hideWindow", String(hideWindow));
+      form.append("enabled", "true");
+      form.append("osFilter", JSON.stringify(osFilter));
+
+      const res = await fetch("/api/auto-deploys", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to save auto start rule");
+        return;
+      }
+
+      resetAutoDeployForm();
+      loadAutoDeploys();
+    } catch (err) {
+      console.error("Save auto deploy failed:", err);
+      alert("Failed to save auto start rule.");
+    } finally {
+      autoDeploySaveBtn.disabled = false;
+    }
+  });
+}
+
+if (autoDeployCancelBtn) {
+  autoDeployCancelBtn.addEventListener("click", resetAutoDeployForm);
+}
+
 checkAuth();
 loadClients();
+loadAutoDeploys();

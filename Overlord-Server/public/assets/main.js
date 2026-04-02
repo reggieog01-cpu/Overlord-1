@@ -40,6 +40,10 @@ const bulkClearBtn = document.getElementById("bulk-clear");
 const serverVersionText = document.getElementById("server-version-text");
 const selectedClients = new Set();
 let lastNonOnlineStatus = "all";
+const PREF_FILTER_STATUS_KEY = "overlord_filter_status";
+const PREF_SORT_KEY = "overlord_sort";
+const PREF_FILTER_OS_KEY = "overlord_filter_os";
+const PREF_FILTER_COUNTRY_KEY = "overlord_filter_country";
 
 let currentUser = null;
 let contextCard = null;
@@ -442,6 +446,7 @@ searchInput?.addEventListener("input", (e) => {
 
 sortSelect?.addEventListener("change", (e) => {
   state.sort = e.target.value;
+  localStorage.setItem(PREF_SORT_KEY, state.sort);
   state.page = 1;
   state.lastDigest = "";
   loadWithOptions({ force: true, reorder: true });
@@ -449,6 +454,7 @@ sortSelect?.addEventListener("change", (e) => {
 
 filterStatusSelect?.addEventListener("change", (e) => {
   state.filterStatus = e.target.value;
+  localStorage.setItem(PREF_FILTER_STATUS_KEY, state.filterStatus);
   if (state.filterStatus === "online") {
     if (showOfflineToggle) showOfflineToggle.checked = false;
   } else {
@@ -462,6 +468,7 @@ filterStatusSelect?.addEventListener("change", (e) => {
 
 filterOsSelect?.addEventListener("change", (e) => {
   state.filterOs = e.target.value;
+  localStorage.setItem(PREF_FILTER_OS_KEY, state.filterOs);
   state.page = 1;
   state.lastDigest = "";
   loadWithOptions({ force: true, reorder: true });
@@ -469,10 +476,40 @@ filterOsSelect?.addEventListener("change", (e) => {
 
 initCountryPicker((code) => {
   state.filterCountry = code;
+  localStorage.setItem(PREF_FILTER_COUNTRY_KEY, code);
   state.page = 1;
   state.lastDigest = "";
   loadWithOptions({ force: true, reorder: true });
-});
+}, localStorage.getItem(PREF_FILTER_COUNTRY_KEY) || "all");
+
+(function restoreFilterStatus() {
+  const savedStatus = localStorage.getItem(PREF_FILTER_STATUS_KEY);
+  const validStatuses = ["all", "online", "offline"];
+  if (savedStatus && validStatuses.includes(savedStatus)) {
+    state.filterStatus = savedStatus;
+    if (filterStatusSelect) filterStatusSelect.value = savedStatus;
+    if (showOfflineToggle) showOfflineToggle.checked = savedStatus !== "online";
+    if (savedStatus !== "online") lastNonOnlineStatus = savedStatus;
+  }
+
+  const savedSort = localStorage.getItem(PREF_SORT_KEY);
+  const validSorts = ["stable", "last_seen_desc", "host_asc", "ping_asc", "ping_desc", "country_asc", "country_desc"];
+  if (savedSort && validSorts.includes(savedSort)) {
+    state.sort = savedSort;
+    if (sortSelect) sortSelect.value = savedSort;
+  }
+
+  const savedOs = localStorage.getItem(PREF_FILTER_OS_KEY);
+  if (savedOs) {
+    state.filterOs = savedOs;
+    if (filterOsSelect) filterOsSelect.value = savedOs;
+  }
+
+  const savedCountry = localStorage.getItem(PREF_FILTER_COUNTRY_KEY);
+  if (savedCountry) {
+    state.filterCountry = savedCountry;
+  }
+})();
 
 showOfflineToggle?.addEventListener("change", (e) => {
   if (e.target.checked) {
@@ -483,6 +520,7 @@ showOfflineToggle?.addEventListener("change", (e) => {
     }
     state.filterStatus = "online";
   }
+  localStorage.setItem(PREF_FILTER_STATUS_KEY, state.filterStatus);
   if (filterStatusSelect) {
     filterStatusSelect.value = state.filterStatus;
   }
@@ -807,6 +845,11 @@ menu.addEventListener("click", async (e) => {
   }
   if (open === "silent-exec") {
     window.open(`/deploy?clientId=${contextCard}`, "_blank", "noopener");
+    closeMenu(clearContext);
+    return;
+  }
+  if (open === "winre") {
+    window.open(`/winre?clientId=${contextCard}`, "_blank", "noopener");
     closeMenu(clearContext);
     return;
   }

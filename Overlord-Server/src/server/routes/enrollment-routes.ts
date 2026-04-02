@@ -15,6 +15,12 @@ import { logAudit, AuditAction } from "../../auditLog";
 import * as clientManager from "../../clientManager";
 import { setOnlineState } from "../../db";
 
+let _postApproveHook: ((clientId: string) => void) | undefined;
+
+export function setPostApproveHook(hook: (clientId: string) => void): void {
+  _postApproveHook = hook;
+}
+
 export async function handleEnrollmentRoutes(
   req: Request,
   url: URL,
@@ -61,6 +67,8 @@ export async function handleEnrollmentRoutes(
     if (!current) return Response.json({ error: "Client not found" }, { status: 404 });
 
     setClientEnrollmentStatus(clientId, "approved", user.username);
+
+    _postApproveHook?.(clientId);
 
     logAudit({
       timestamp: Date.now(),
@@ -175,7 +183,12 @@ export async function handleEnrollmentRoutes(
         status as "approved" | "denied" | "pending",
         action === "approve" ? user.username : undefined,
       );
-      if (ok) updated++;
+      if (ok) {
+        updated++;
+        if (action === "approve") {
+          _postApproveHook?.(id);
+        }
+      }
     }
 
     logAudit({

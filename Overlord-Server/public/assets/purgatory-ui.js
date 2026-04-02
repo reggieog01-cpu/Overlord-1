@@ -29,6 +29,7 @@ const banModalBackdrop = document.getElementById("ban-modal-backdrop");
 let currentFilter = "pending";
 let searchQuery = "";
 let clients = [];
+const expandedCells = new Set(); // tracks "clientId:field" keys
 
 // ── API helpers ────────────────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -82,7 +83,7 @@ async function loadClients() {
   const q = searchQuery.toLowerCase().trim();
   const filtered = q
     ? clients.filter((c) => {
-        const fields = [c.host, c.user, c.ip, c.id, c.os, c.country, c.keyFingerprint];
+        const fields = [c.host, c.user, c.ip, c.id, c.os, c.country, c.keyFingerprint, c.cpu, c.gpu, c.ram];
         return fields.some((f) => f && String(f).toLowerCase().includes(q));
       })
     : clients;
@@ -108,12 +109,15 @@ async function loadClients() {
       <td class="px-4 py-3 text-sm font-medium text-slate-200">${esc(c.host || c.id)}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.user || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.os || "-")}</td>
+      <td class="px-4 py-3 text-sm text-slate-400">${expandableCell(c.id, "cpu", c.cpu)}</td>
+      <td class="px-4 py-3 text-sm text-slate-400">${expandableCell(c.id, "gpu", c.gpu)}</td>
+      <td class="px-4 py-3 text-sm text-slate-400">${esc(c.ram || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.ip || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.country || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-500 font-mono">${esc(fp)}</td>
       <td class="px-4 py-3 text-sm text-slate-500">${lastSeen}</td>
       <td class="px-4 py-3">${statusPill}</td>
-      <td class="px-4 py-3 text-right space-x-2">${actionButtons(c)}</td>
+      <td class="px-4 py-3"><div class="flex items-center justify-end gap-2 flex-nowrap">${actionButtons(c)}</div></td>
     `;
     body.appendChild(tr);
   }
@@ -136,16 +140,16 @@ function actionButtons(c) {
   const status = c.enrollmentStatus || "pending";
   let html = "";
   if (status !== "approved") {
-    html += `<button class="act-approve px-2 py-1 rounded text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-check mr-1"></i>Approve</button>`;
+    html += `<button class="act-approve whitespace-nowrap px-2 py-1 rounded text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-check mr-1"></i>Approve</button>`;
   }
   if (status !== "denied") {
-    html += `<button class="act-deny px-2 py-1 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-ban mr-1"></i>Deny</button>`;
+    html += `<button class="act-deny whitespace-nowrap px-2 py-1 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-ban mr-1"></i>Deny</button>`;
   }
   if (status !== "pending") {
-    html += `<button class="act-reset px-2 py-1 rounded text-xs font-medium bg-slate-600 hover:bg-slate-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-rotate-left mr-1"></i>Reset</button>`;
+    html += `<button class="act-reset whitespace-nowrap px-2 py-1 rounded text-xs font-medium bg-slate-600 hover:bg-slate-700 text-white" data-id="${esc(c.id)}"><i class="fa-solid fa-rotate-left mr-1"></i>Reset</button>`;
   }
   if (c.ip) {
-    html += `<button class="act-ban-ip px-2 py-1 rounded text-xs font-medium bg-rose-700 hover:bg-rose-800 text-white" data-id="${esc(c.id)}" title="Ban IP ${esc(c.ip)}"><i class="fa-solid fa-shield-halved mr-1"></i>Ban IP</button>`;
+    html += `<button class="act-ban-ip whitespace-nowrap px-2 py-1 rounded text-xs font-medium bg-rose-700 hover:bg-rose-800 text-white" data-id="${esc(c.id)}" title="Ban IP ${esc(c.ip)}"><i class="fa-solid fa-shield-halved mr-1"></i>Ban IP</button>`;
   }
   return html;
 }
@@ -154,6 +158,21 @@ function esc(s) {
   const d = document.createElement("div");
   d.textContent = String(s ?? "");
   return d.innerHTML;
+}
+
+function expandableCell(clientId, field, value) {
+  const text = value || "-";
+  if (text === "-" || text.length <= 24) {
+    return `<span>${esc(text)}</span>`;
+  }
+  const key = `${clientId}:${field}`;
+  const isOpen = expandedCells.has(key);
+  const short = text.substring(0, 22) + "…";
+  return `<span class="hw-expand cursor-pointer select-none" data-expand-key="${esc(key)}" data-expanded="${isOpen ? "1" : "0"}">` +
+    `<span class="hw-short${isOpen ? " hidden" : ""}">${esc(short)}</span>` +
+    `<span class="hw-full${isOpen ? "" : " hidden"}">${esc(text)}</span>` +
+    `<i class="fa-solid fa-chevron-down text-[10px] ml-1 text-slate-500 transition-transform hw-chevron" style="${isOpen ? "transform:rotate(180deg)" : ""}"></i>` +
+    `</span>`;
 }
 
 function timeAgo(ts) {
@@ -236,6 +255,20 @@ document.querySelectorAll(".enrollment-tab").forEach((tab) => {
 
 // ── Table delegation ───────────────────────────────────────────────
 body.addEventListener("click", (e) => {
+  // Expandable CPU/GPU cells
+  const expander = e.target.closest(".hw-expand");
+  if (expander) {
+    const isOpen = expander.dataset.expanded === "1";
+    const key = expander.dataset.expandKey;
+    expander.dataset.expanded = isOpen ? "0" : "1";
+    if (isOpen) expandedCells.delete(key); else expandedCells.add(key);
+    expander.querySelector(".hw-short").classList.toggle("hidden", !isOpen);
+    expander.querySelector(".hw-full").classList.toggle("hidden", isOpen);
+    const chevron = expander.querySelector(".hw-chevron");
+    if (chevron) chevron.style.transform = isOpen ? "" : "rotate(180deg)";
+    return;
+  }
+
   const btn = e.target.closest("button");
   if (!btn) return;
   const id = btn.dataset.id;

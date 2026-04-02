@@ -24,6 +24,10 @@ export type ClientInfo = {
   monitorInfo?: { width: number; height: number }[];
   country?: string;
   pingMs?: number;
+  inMemory?: boolean;
+  cpu?: string;
+  gpu?: string;
+  ram?: string;
   enrollmentStatus?: EnrollmentStatus;
   publicKey?: string;
   keyFingerprint?: string;

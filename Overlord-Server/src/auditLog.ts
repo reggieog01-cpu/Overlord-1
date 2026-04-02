@@ -76,6 +76,8 @@ export enum AuditAction {
   ENROLLMENT_DENY = "enrollment_deny",
   ENROLLMENT_SETTINGS = "enrollment_settings",
   ENROLLMENT_BULK = "enrollment_bulk",
+  WINRE_INSTALL = "winre_install",
+  WINRE_UNINSTALL = "winre_uninstall",
 }
 
 export interface AuditLogEntry {
