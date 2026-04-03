@@ -1579,6 +1579,35 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		env.WebcamUseMaxFPS = useMax
 		sendCommandResultSafe(env, cmdID, true, "")
 		return nil
+	case "webcam_set_quality":
+		payload, _ := envelope["payload"].(map[string]interface{})
+		quality := 0
+		codec := ""
+		if payload != nil {
+			if q, ok := payloadInt(payload, "quality"); ok {
+				quality = q
+			}
+			if v, ok := payload["codec"].(string); ok {
+				codec = v
+			}
+		}
+		if quality < 0 {
+			quality = 0
+		}
+		if quality > 100 {
+			quality = 100
+		}
+		switch codec {
+		case "jpeg", "h264":
+			// valid
+		default:
+			codec = "jpeg"
+		}
+		env.WebcamQuality = quality
+		env.WebcamCodec = codec
+		log.Printf("webcam: set quality=%d codec=%s", quality, codec)
+		sendCommandResultSafe(env, cmdID, true, "")
+		return nil
 	case "webcam_stop":
 		env.WebcamMu.Lock()
 		log.Printf("webcam: stop requested")

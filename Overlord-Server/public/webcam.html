@@ -52,6 +52,29 @@
               <i class="fa-solid fa-sliders"></i><span>Apply</span>
             </button>
           </div>
+          <div
+            class="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-3 text-sm text-slate-300"
+          >
+            <label for="qualitySlider" class="text-slate-200">Quality</label>
+            <input
+              id="qualitySlider"
+              type="range"
+              min="10"
+              max="100"
+              step="5"
+              value="90"
+              class="accent-sky-400"
+            />
+            <span id="qualityValue" class="pill pill-ghost text-slate-100">90%</span>
+          </div>
+          <div
+            class="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-3 text-sm text-slate-300"
+          >
+            <label class="flex items-center gap-2 text-slate-200" title="Prefer H.264 when available; disable to force JPEG">
+              <input type="checkbox" id="codecH264" checked /> H.264
+            </label>
+            <span id="codecMode" class="pill pill-ghost text-slate-100">Codec: auto</span>
+          </div>
           <div class="flex items-center gap-2">
             <button id="startBtn" class="button primary">
               <i class="fa-solid fa-play"></i><span>Start</span>

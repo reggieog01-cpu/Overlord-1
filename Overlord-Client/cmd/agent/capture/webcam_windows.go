@@ -3,8 +3,12 @@
 package capture
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/jpeg"
 	"log"
 	"sync"
 	"time"
@@ -117,12 +121,44 @@ func NowWebcam(ctx context.Context, env *rt.Env) error {
 		return nil
 	}
 
+	quality := env.WebcamQuality
+	codec := env.WebcamCodec
+	outFormat := format
+
+	if codec == "h264" && format == "jpeg" && h264Available() {
+		img, err := jpeg.Decode(bytes.NewReader(frameBytes))
+		if err == nil {
+			bounds := img.Bounds()
+			w, h := bounds.Dx(), bounds.Dy()
+			if w%2 != 0 || h%2 != 0 {
+				log.Printf("webcam: h264 skipped for odd dimensions (%dx%d), falling back to jpeg", w, h)
+			} else {
+				rgba := toRGBA(img)
+				if h264Bytes, err := encodeH264Frame(rgba); err == nil && len(h264Bytes) > 0 {
+					frameBytes = h264Bytes
+					outFormat = "h264"
+				} else {
+					log.Printf("webcam: h264 encode failed, falling back to jpeg: %v", err)
+				}
+			}
+		}
+	}
+
+	if outFormat == "jpeg" && quality > 0 && quality < 100 {
+		img, err := jpeg.Decode(bytes.NewReader(frameBytes))
+		if err == nil {
+			if reencoded, err := encodeJPEG(img, quality); err == nil {
+				frameBytes = reencoded
+			}
+		}
+	}
+
 	frame := wire.Frame{
 		Type: "frame",
 		Header: wire.FrameHeader{
 			Monitor: deviceIndex,
 			FPS:     0,
-			Format:  format,
+			Format:  outFormat,
 			Webcam:  true,
 		},
 		Data: frameBytes,
@@ -295,4 +331,14 @@ func closeWebcamLocked() {
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+}
+
+func toRGBA(img image.Image) *image.RGBA {
+	if rgba, ok := img.(*image.RGBA); ok {
+		return rgba
+	}
+	b := img.Bounds()
+	rgba := image.NewRGBA(b)
+	draw.Draw(rgba, b, img, b.Min, draw.Src)
+	return rgba
 }
