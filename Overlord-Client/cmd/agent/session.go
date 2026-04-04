@@ -589,6 +589,7 @@ func runSession(ctx context.Context, cancel context.CancelFunc, conn *websocket.
 					last := env.LastPong()
 					if !last.IsZero() && time.Since(last) > grace {
 						log.Printf("ping: no pong for %s, forcing reconnect", time.Since(last))
+						conn.Close(websocket.StatusGoingAway, "pong timeout")
 						cancel()
 						return
 					}
