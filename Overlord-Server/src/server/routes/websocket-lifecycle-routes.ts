@@ -85,6 +85,7 @@ type WsLifecycleDeps = {
   sendHVNCCommand: (target: ClientInfo, commandType: string, payload: Record<string, unknown>) => void;
   notifyConsoleClosed: (clientId: string, reason: string) => void;
   clearPendingNotificationScreenshots: (clientId: string) => void;
+  clearClientPluginState: (clientId: string) => void;
   notifyRemoteDesktopStatus: (clientId: string, status: string, reason?: string) => void;
   handleBuildTagConnection: (clientId: string, buildTag: string) => void;
   notifyDashboard: () => void;
@@ -714,6 +715,7 @@ export function handleWebSocketClose(
   deps.notifyConsoleClosed(clientId, "Client disconnected");
   setOnlineState(clientId, false);
   deps.clearPendingNotificationScreenshots(clientId);
+  deps.clearClientPluginState(clientId);
   deps.notifyDashboard();
   logger.info(`[close] ${clientId} code=${code} reason=${reason}`);
 

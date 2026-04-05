@@ -1613,10 +1613,82 @@ func drawHVNCWindow(hdcScreen, hwnd uintptr, bounds image.Rectangle, target []by
 	buf := unsafe.Slice((*byte)(entry.bits), winW*winH*4)
 	winStride := winW * 4
 
-	interLeft := maxInt(winLeft, bounds.Min.X)
-	interTop := maxInt(winTop, bounds.Min.Y)
-	interRight := minInt(winRight, bounds.Max.X)
-	interBottom := minInt(winBottom, bounds.Max.Y)
+	effTop, effLeft, effBottom, effRight := 0, 0, winH, winW
+
+	topFound := false
+	for y := 0; y < winH; y++ {
+		rowBase := y * winStride
+		for x := 0; x < winW; x++ {
+			off := rowBase + x*4
+			if buf[off]|buf[off+1]|buf[off+2] != 0 {
+				effTop = y
+				topFound = true
+				break
+			}
+		}
+		if topFound {
+			break
+		}
+	}
+	if !topFound {
+		return false
+	}
+
+	for y := winH - 1; y > effTop; y-- {
+		rowBase := y * winStride
+		found := false
+		for x := 0; x < winW; x++ {
+			off := rowBase + x*4
+			if buf[off]|buf[off+1]|buf[off+2] != 0 {
+				found = true
+				break
+			}
+		}
+		if found {
+			effBottom = y + 1
+			break
+		}
+	}
+
+	leftFound := false
+	for x := 0; x < winW; x++ {
+		for y := effTop; y < effBottom; y++ {
+			off := y*winStride + x*4
+			if buf[off]|buf[off+1]|buf[off+2] != 0 {
+				effLeft = x
+				leftFound = true
+				break
+			}
+		}
+		if leftFound {
+			break
+		}
+	}
+
+	for x := winW - 1; x > effLeft; x-- {
+		found := false
+		for y := effTop; y < effBottom; y++ {
+			off := y*winStride + x*4
+			if buf[off]|buf[off+1]|buf[off+2] != 0 {
+				found = true
+				break
+			}
+		}
+		if found {
+			effRight = x + 1
+			break
+		}
+	}
+
+	effWinLeft := winLeft + effLeft
+	effWinTop := winTop + effTop
+	effWinRight := winLeft + effRight
+	effWinBottom := winTop + effBottom
+
+	interLeft := maxInt(effWinLeft, bounds.Min.X)
+	interTop := maxInt(effWinTop, bounds.Min.Y)
+	interRight := minInt(effWinRight, bounds.Max.X)
+	interBottom := minInt(effWinBottom, bounds.Max.Y)
 	if interRight <= interLeft || interBottom <= interTop {
 		return false
 	}

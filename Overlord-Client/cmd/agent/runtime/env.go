@@ -37,6 +37,8 @@ type Env struct {
 	WebcamDeviceIndex   int
 	WebcamFPS           int
 	WebcamUseMaxFPS     bool
+	WebcamQuality       int
+	WebcamCodec         string
 	WebcamCancel        context.CancelFunc
 	WebcamDone          chan struct{}
 	WebcamMu            sync.Mutex

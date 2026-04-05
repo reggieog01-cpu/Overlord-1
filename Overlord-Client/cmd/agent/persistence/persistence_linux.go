@@ -35,12 +35,19 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 `
 
+func binaryName() string {
+	if DefaultStartupName != "" {
+		return DefaultStartupName
+	}
+	return "agent"
+}
+
 func getSystemdPath() (string, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(usr.HomeDir, ".config", "systemd", "user", "overlord-agent.service"), nil
+	return filepath.Join(usr.HomeDir, ".config", "systemd", "user", binaryName()+".service"), nil
 }
 
 func getAutostartPath() (string, error) {
@@ -48,7 +55,7 @@ func getAutostartPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(usr.HomeDir, ".config", "autostart", "overlord-agent.desktop"), nil
+	return filepath.Join(usr.HomeDir, ".config", "autostart", binaryName()+".desktop"), nil
 }
 
 func getTargetPath() (string, error) {
@@ -56,7 +63,7 @@ func getTargetPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(usr.HomeDir, ".local", "share", "overlord", "agent"), nil
+	return filepath.Join(usr.HomeDir, ".local", "share", "overlord", binaryName()), nil
 }
 
 func install(exePath string) error {

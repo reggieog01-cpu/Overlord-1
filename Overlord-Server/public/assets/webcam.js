@@ -15,6 +15,10 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
   const refreshCameras = document.getElementById("refreshCameras");
   const fpsInput = document.getElementById("fpsInput");
   const applyFps = document.getElementById("applyFps");
+  const qualitySlider = document.getElementById("qualitySlider");
+  const qualityValue = document.getElementById("qualityValue");
+  const codecH264 = document.getElementById("codecH264");
+  const codecMode = document.getElementById("codecMode");
   const viewerFps = document.getElementById("viewerFps");
   const statusEl = document.getElementById("streamStatus");
   const canvas = document.getElementById("frameCanvas");
@@ -33,6 +37,43 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
   let selectedDeviceIndex = 0;
   let hasRenderedFrame = false;
   let drawPending = false;
+
+  const codecPrefKey = "webcamCodecPreferH264";
+  let prefersH264 = typeof VideoDecoder === "function";
+
+  const storedCodecPref = localStorage.getItem(codecPrefKey);
+  if (storedCodecPref === "0") {
+    prefersH264 = false;
+  } else if (storedCodecPref === "1") {
+    prefersH264 = typeof VideoDecoder === "function";
+  }
+
+  if (codecH264) {
+    codecH264.checked = prefersH264;
+    codecH264.disabled = typeof VideoDecoder !== "function";
+  }
+
+  function setCodecModeLabel(mode, detail) {
+    if (!codecMode) return;
+    const suffix = detail ? ` (${detail})` : "";
+    codecMode.textContent = `Codec: ${String(mode || "auto").toUpperCase()}${suffix}`;
+  }
+
+  setCodecModeLabel(prefersH264 ? "h264" : "jpeg", "preferred");
+
+  function updateQualityLabel(val) {
+    if (qualityValue) {
+      qualityValue.textContent = `${val}%`;
+    }
+  }
+
+  function pushQuality(val) {
+    const q = Number(val) || 90;
+    const codec = prefersH264 ? "h264" : "jpeg";
+    console.debug("webcam: pushQuality val=", val, "q=", q, "codec=", codec);
+    setCodecModeLabel(codec, "requested");
+    send("webcam_set_quality", { quality: q, codec });
+  }
 
   function buildScreenshotFilename() {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -336,6 +377,7 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
     ws.onopen = () => {
       requestCameraList();
       applyFpsSettings();
+      pushQuality(qualitySlider ? qualitySlider.value : 90);
       if (desiredStreaming) {
         send("webcam_start");
         setStreamState("starting", "Starting");
@@ -410,6 +452,27 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
       fpsInput.value = String(maxFps);
     }
   });
+
+  if (codecH264) {
+    codecH264.addEventListener("change", function () {
+      prefersH264 = !!codecH264.checked && typeof VideoDecoder === "function";
+      localStorage.setItem(codecPrefKey, prefersH264 ? "1" : "0");
+      if (!prefersH264) {
+        destroyVideoDecoder();
+      }
+      if (qualitySlider) {
+        pushQuality(qualitySlider.value);
+      }
+    });
+  }
+
+  if (qualitySlider) {
+    updateQualityLabel(qualitySlider.value);
+    qualitySlider.addEventListener("input", function () {
+      updateQualityLabel(qualitySlider.value);
+      pushQuality(qualitySlider.value);
+    });
+  }
 
   applyFps.addEventListener("click", () => {
     applyFpsSettings();

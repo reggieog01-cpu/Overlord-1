@@ -9,7 +9,6 @@ import (
 )
 
 func HandlePing(ctx context.Context, env *runtime.Env, envelope map[string]interface{}) error {
-	env.SetLastPong(time.Now().UnixMilli())
 
 	ts := extractTimestamp(envelope["ts"])
 	if ts == 0 {

@@ -360,6 +360,11 @@ export function createNotificationPluginHandlers(deps: CreateDeps) {
 
     markPluginLoaded,
 
+    clearClientPluginState(clientId: string) {
+      deps.pluginLoadedByClient.delete(clientId);
+      deps.pluginLoadingByClient.delete(clientId);
+    },
+
     isPluginLoaded(clientId: string, pluginId: string): boolean {
       return deps.pluginLoadedByClient.get(clientId)?.has(pluginId) ?? false;
     },

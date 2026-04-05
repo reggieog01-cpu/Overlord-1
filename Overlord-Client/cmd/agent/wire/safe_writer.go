@@ -2,22 +2,33 @@ package wire
 
 import (
 	"context"
-	"sync"
+	"time"
 
 	"nhooyr.io/websocket"
 )
 
+const writeTimeout = 30 * time.Second
+
 type SafeWriter struct {
-	mu sync.Mutex
-	w  Writer
+	sem chan struct{}
+	w   Writer
 }
 
 func NewSafeWriter(w Writer) *SafeWriter {
-	return &SafeWriter{w: w}
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{}
+	return &SafeWriter{sem: sem, w: w}
 }
 
 func (s *SafeWriter) Write(ctx context.Context, messageType websocket.MessageType, p []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.w.Write(ctx, messageType, p)
+	select {
+	case <-s.sem:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { s.sem <- struct{}{} }()
+
+	writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	return s.w.Write(writeCtx, messageType, p)
 }

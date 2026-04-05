@@ -1,6 +1,8 @@
 # Overlord Plugins
 
-This document explains how to build Overlord plugins using the **native plugin system**. Plugins run as native shared libraries (`.so` on Linux, `.dylib` on macOS, in-memory DLL on Windows), giving them full access to the Go runtime and system APIs.
+This document explains how to build Overlord plugins using the **native plugin system**. Plugins run as native shared libraries (`.so` on Linux, `.dylib` on macOS, in-memory DLL on Windows), giving them full access to system APIs.
+
+Plugins can be written in **any language** that can produce a C-ABI shared library: **Go**, **C**, **C++**, **Rust**, or anything else that compiles to native code.
 
 > TL;DR: A plugin is a zip with platform-specific binaries (`.so`/`.dll`/`.dylib`) plus `<id>.html`, `<id>.css`, `<id>.js`. Upload it in the Plugins page or drop it in Overlord-Server/plugins.
 
@@ -47,6 +49,21 @@ Overlord-Server/plugins/sample/
      └─ sample.js
 ```
 
+### Architecture validation
+
+The server matches binaries to clients by OS and architecture. Binary filenames **must** follow the naming convention `<pluginId>-<os>-<arch>.<ext>`:
+
+| OS       | Arch    | Example filename             |
+|----------|---------|------------------------------|
+| windows  | amd64   | `sample-windows-amd64.dll`   |
+| windows  | arm64   | `sample-windows-arm64.dll`   |
+| linux    | amd64   | `sample-linux-amd64.so`      |
+| linux    | arm64   | `sample-linux-arm64.so`      |
+| darwin   | amd64   | `sample-darwin-amd64.dylib`  |
+| darwin   | arm64   | `sample-darwin-arm64.dylib`  |
+
+The server will **never** send an x64 binary to an ARM client (or vice versa). If no binary matches the client's platform, loading is skipped with an error.
+
 ### Manifest fields
 
 The auto-generated manifest:
@@ -71,18 +88,96 @@ The auto-generated manifest:
 }
 ```
 
-The server picks the right binary for the target client's OS/arch when loading.
+## 2) Plugin ABI (all languages)
 
-## 2) Build a native plugin
+Every plugin — regardless of language — must export **C-callable functions** with specific signatures. The ABI differs slightly between Windows and Unix.
 
-### Plugin contract
+### Required exports
 
-Plugins are Go packages that export specific functions. The core logic is shared across platforms, with thin platform-specific export wrappers.
+| Export             | Signature (Windows)                                                   | Signature (Linux / macOS)                                                         | Required |
+|--------------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------|----------|
+| `PluginOnLoad`     | `int PluginOnLoad(char* hostInfo, int hostInfoLen, uint64 callback)`  | `int PluginOnLoad(char* hostInfo, int hostInfoLen, uintptr callback, uintptr ctx)` | Yes      |
+| `PluginOnEvent`    | `int PluginOnEvent(char* event, int eventLen, char* payload, int payloadLen)` | same                                                                      | Yes      |
+| `PluginOnUnload`   | `void PluginOnUnload()`                                               | same                                                                              | Yes      |
+| `PluginSetCallback`| `void PluginSetCallback(uint64 callback)`                             | —                                                                                 | Windows only |
+| `PluginGetRuntime` | `const char* PluginGetRuntime()`                                      | same                                                                              | Recommended  |
 
-All platforms use `-buildmode=c-shared` and export C-callable functions.
+### Host callback
 
-#### Linux / macOS (`.so` / `.dylib`)
+The host passes a callback function pointer during `PluginOnLoad`. The plugin uses it to send events back to the agent.
 
+**Windows** — The callback is a `__stdcall` function:
+
+```c
+void __stdcall callback(const char *event, uintptr_t eventLen,
+                        const char *payload, uintptr_t payloadLen);
+```
+
+**Linux / macOS** — The callback is a standard C function with an opaque context pointer:
+
+```c
+void callback(uintptr_t ctx,
+              const char *event, int eventLen,
+              const char *payload, int payloadLen);
+```
+
+The `ctx` value received in `PluginOnLoad` must be passed back as the first argument to every callback invocation.
+
+### PluginGetRuntime (runtime detection)
+
+If a plugin exports `PluginGetRuntime`, the host calls it after loading. It must return a pointer to a static, null-terminated string identifying the runtime:
+
+| Return value | Meaning                               |
+|-------------|---------------------------------------|
+| `"c"`       | Pure C plugin — fully unloadable      |
+| `"cpp"`     | C++ plugin — fully unloadable         |
+| `"rust"`    | Rust plugin — fully unloadable        |
+| *(absent)*  | Defaults to `"go"` — **not** freed    |
+
+This matters because **Go plugins cannot be fully unloaded** due to [golang/go#11100](https://github.com/golang/go/issues/11100) — Go's runtime spawns threads that cannot be stopped, so calling `FreeLibrary`/`dlclose` on a Go shared library causes a crash. The host uses this information to skip freeing Go plugins while properly reclaiming memory for C/C++/Rust plugins.
+
+The runtime is logged on load and unload:
+```
+[plugins] loaded plugin "sample-c" (runtime=c, freeable=true)
+[plugins] unloaded plugin "sample-c" — memory freed
+[plugins] unloaded plugin "sample-go" — memory leaked (go runtime)
+```
+
+### HostInfo JSON
+
+The `hostInfo` buffer passed to `PluginOnLoad` is JSON:
+
+```json
+{
+  "clientId": "abc123",
+  "os": "windows",
+  "arch": "amd64",
+  "version": "1.0.0"
+}
+```
+
+### Loading mechanism
+
+- **Windows** — DLLs are loaded **entirely in memory** via a custom PE loader. No files are written to disk. This is why Rust's `std::sync::Mutex` (backed by `SRWLOCK`) may not initialize correctly — see the Rust section below.
+- **Linux** — Shared libraries are loaded in memory via `memfd_create` + `dlopen` on `/proc/self/fd/`. No files touch disk.
+- **macOS** — Shared libraries are written to a temp file, `dlopen`'d, then the temp file is deleted.
+
+## 3) Sample plugins by language
+
+### Go (`plugin-sample-go/`)
+
+Go plugins use `-buildmode=c-shared` with platform-specific export wrappers.
+
+**Project structure:**
+```
+plugin-sample-go/native/
+  ├─ main.go              (shared core logic)
+  ├─ exports_unix.go      (exports for Linux/macOS)
+  ├─ exports_windows.go   (exports for Windows)
+  └─ go.mod
+```
+
+**Linux / macOS exports:**
 ```go
 //export PluginOnLoad
 func PluginOnLoad(hostInfo *C.char, hostInfoLen C.int, cb C.uintptr_t, ctx C.uintptr_t) C.int
@@ -94,14 +189,7 @@ func PluginOnEvent(event *C.char, eventLen C.int, payload *C.char, payloadLen C.
 func PluginOnUnload()
 ```
 
-The host passes a callback function pointer and context during OnLoad. The plugin calls the callback to send events back.
-
-Build: `CGO_ENABLED=1 go build -buildmode=c-shared -o sample-linux-amd64.so ./native`
-
-**On Linux, shared libraries are loaded entirely in memory via `memfd_create` — no files touch disk.**
-
-#### Windows (`.dll`)
-
+**Windows exports:**
 ```go
 //export PluginOnLoad
 func PluginOnLoad(hostInfo *C.char, hostInfoLen C.int, callbackPtr C.ulonglong) C.int
@@ -116,55 +204,253 @@ func PluginOnUnload()
 func PluginSetCallback(callbackPtr C.ulonglong)
 ```
 
-The callback is a stdcall function pointer: `func(eventPtr, eventLen, payloadPtr, payloadLen uintptr) uintptr`
+**Build:**
+```bash
+CGO_ENABLED=1 go build -buildmode=c-shared -o sample-windows-amd64.dll ./native
+```
 
-Build: `CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -buildmode=c-shared -o sample-windows-amd64.dll ./native`
+> **Note:** Go plugins do **not** export `PluginGetRuntime` and default to the `"go"` runtime. They are intentionally never freed on unload to prevent crashes from orphaned Go runtime threads.
 
-**On Windows, DLLs are loaded entirely in memory — no files are written to disk.**
+---
 
-### HostInfo JSON
+### C (`plugin-sample-c/`)
 
-```json
-{
-  "clientId": "abc123",
-  "os": "windows",
-  "arch": "amd64",
-  "version": "1.0.0"
+Pure C plugins are the simplest — no runtime, no GC, fully unloadable.
+
+**Project structure:**
+```
+plugin-sample-c/
+  ├─ native/plugin.c
+  ├─ sample-c.html
+  ├─ sample-c.css
+  └─ sample-c.js
+```
+
+**Key points:**
+- Uses `__declspec(dllexport)` on Windows, `__attribute__((visibility("default")))` on Unix
+- Has a `DllMain` entry point on Windows (receives `DLL_PROCESS_ATTACH` / `DLL_PROCESS_DETACH`)
+- Exports `PluginGetRuntime` → returns `"c"`
+- No heap allocations required — can use stack buffers for all responses
+
+**Minimal example (Windows callback):**
+```c
+#ifdef _WIN32
+typedef void (__stdcall *host_callback_t)(
+    const char *event, uintptr_t eventLen,
+    const char *payload, uintptr_t payloadLen);
+#else
+typedef void (*host_callback_t)(
+    uintptr_t ctx,
+    const char *event, int eventLen,
+    const char *payload, int payloadLen);
+#endif
+
+static host_callback_t g_callback;
+
+EXPORT int PluginOnLoad(const char *hostInfo, int hostInfoLen, ...) {
+    // Parse hostInfo JSON, store callback, return 0 on success
 }
+
+EXPORT int PluginOnEvent(const char *event, int eventLen,
+                         const char *payload, int payloadLen) {
+    // Handle events, call g_callback() to respond
+    return 0;
+}
+
+EXPORT void PluginOnUnload(void) {
+    // Cleanup
+}
+
+EXPORT const char *PluginGetRuntime(void) { return "c"; }
 ```
 
-### Project structure
+**Build:**
+```bash
+# MSVC
+cl /LD /O2 plugin.c /Fe:sample-c-windows-amd64.dll
 
-See `plugin-sample-go/native/` for a working example:
+# MinGW / gcc
+gcc -shared -O2 -o sample-c-windows-amd64.dll plugin.c
 
+# Linux
+gcc -shared -fPIC -O2 -o sample-c-linux-amd64.so plugin.c
 ```
-plugin-sample-go/native/
-  ├─ main.go              (shared core logic)
-  ├─ exports_unix.go      (Go plugin exports for Linux/macOS)
-  ├─ exports_windows.go   (C-shared DLL exports for Windows)
-  └─ go.mod
+
+---
+
+### C++ (`plugin-sample-cpp/`)
+
+C++ plugins can use the full standard library (STL containers, `std::mutex`, `std::string`, etc.) while still being fully unloadable.
+
+**Project structure:**
+```
+plugin-sample-cpp/
+  ├─ native/plugin.cpp
+  ├─ sample-cpp.html
+  ├─ sample-cpp.css
+  └─ sample-cpp.js
 ```
 
-### Build scripts
+**Key points:**
+- All exports wrapped in `extern "C"` to prevent name mangling
+- Can freely use `std::string`, `std::unordered_map`, `std::mutex`, etc.
+- Exports `PluginGetRuntime` → returns `"cpp"`
 
-Use the provided build scripts:
+**Build:**
+```bash
+# MSVC
+cl /LD /EHsc /O2 plugin.cpp /Fe:sample-cpp-windows-amd64.dll
+
+# MinGW / g++
+g++ -shared -O2 -o sample-cpp-windows-amd64.dll plugin.cpp
+
+# Linux
+g++ -shared -fPIC -O2 -o sample-cpp-linux-amd64.so plugin.cpp
+```
+
+---
+
+### Rust (`plugin-sample-rust/`)
+
+Rust plugins compile as `cdylib` crates. Exports use `#[no_mangle]` and `extern "C"`.
+
+**Project structure:**
+```
+plugin-sample-rust/
+  ├─ native/
+  │   ├─ Cargo.toml
+  │   └─ src/lib.rs
+  ├─ sample-rust.html
+  ├─ sample-rust.css
+  └─ sample-rust.js
+```
+
+**Key points:**
+- `crate-type = ["cdylib"]` in Cargo.toml
+- Uses `extern "stdcall"` for the callback type on Windows, `extern "C"` on Unix
+- Exports `PluginGetRuntime` → returns `"rust"`
+
+**⚠️ Important: avoid `std::sync::Mutex` on Windows.** Because the DLL is loaded via an in-memory PE loader (not `LoadLibrary`), Rust's standard `Mutex` (backed by Windows `SRWLOCK`) may not initialize correctly, causing an access violation. Use C-style `static mut` globals instead — this is safe because the Go host serializes all calls through its own mutex.
+
+**Cargo.toml:**
+```toml
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+```
+
+**Build:**
+```bash
+# Native
+cargo build --release
+
+# Cross-compile
+cargo build --release --target=x86_64-pc-windows-msvc
+cargo build --release --target=aarch64-unknown-linux-gnu
+```
+
+## 4) Build scripts & cross-compilation
+
+Each language has `.bat` (Windows) and `.sh` (Unix) build scripts. All scripts support the `BUILD_TARGETS` environment variable to compile for multiple platforms in one invocation.
+
+### Available build scripts
+
+| Language | Windows                  | Unix                    |
+|----------|--------------------------|-------------------------|
+| Go       | `build-plugin.bat`       | `build-plugin.sh`       |
+| C        | `build-plugin-c.bat`     | `build-plugin-c.sh`     |
+| C++      | `build-plugin-cpp.bat`   | `build-plugin-cpp.sh`   |
+| Rust     | `build-plugin-rust.bat`  | `build-plugin-rust.sh`  |
+
+### Usage
+
+All scripts default to building for the host platform only:
 
 ```bash
-# Linux/macOS — builds for current platform by default
-./build-plugin.sh
+# Build for current platform
+./build-plugin-c.sh
 
 # Build for multiple targets
-BUILD_TARGETS="linux-amd64 linux-arm64 darwin-arm64" ./build-plugin.sh
+BUILD_TARGETS="linux-amd64 linux-arm64 windows-amd64" ./build-plugin-c.sh
 
-# Windows — builds windows-amd64 by default
-build-plugin.bat
-
-# Build for multiple targets
-set BUILD_TARGETS=windows-amd64 linux-amd64
-build-plugin.bat
+# Custom plugin directory
+./build-plugin-c.sh /path/to/my-plugin
 ```
 
-## 3) Install & open a plugin
+```bat
+REM Build for current platform
+build-plugin-c.bat
+
+REM Build for multiple targets
+set BUILD_TARGETS=windows-amd64 windows-arm64
+build-plugin-c.bat
+
+REM Custom plugin directory
+build-plugin-c.bat C:\path\to\my-plugin
+```
+
+### Cross-compilation
+
+**Go** — Cross-compilation is built-in via `GOOS` / `GOARCH` env vars. No extra toolchains needed (unless CGo calls platform-specific APIs).
+
+**Rust** — Cross-compilation uses `--target=` with Rust target triples. Install targets with `rustup target add <triple>`. The build scripts map `os-arch` pairs to triples automatically:
+
+| Target          | Rust triple (`.bat` / MSVC)         | Rust triple (`.sh` / GNU)             |
+|-----------------|-------------------------------------|---------------------------------------|
+| windows-amd64   | `x86_64-pc-windows-msvc`           | `x86_64-pc-windows-gnu`              |
+| windows-arm64   | `aarch64-pc-windows-msvc`          | `aarch64-pc-windows-gnullvm`         |
+| linux-amd64     | `x86_64-unknown-linux-gnu`         | `x86_64-unknown-linux-gnu`           |
+| linux-arm64     | `aarch64-unknown-linux-gnu`        | `aarch64-unknown-linux-gnu`          |
+| darwin-amd64    | `x86_64-apple-darwin`              | `x86_64-apple-darwin`                |
+| darwin-arm64    | `aarch64-apple-darwin`             | `aarch64-apple-darwin`               |
+
+**C / C++** — Cross-compilation requires the appropriate cross-compiler toolchain to be installed:
+
+| Target          | C compiler                    | C++ compiler                   |
+|-----------------|-------------------------------|--------------------------------|
+| linux-amd64     | `x86_64-linux-gnu-gcc`        | `x86_64-linux-gnu-g++`         |
+| linux-arm64     | `aarch64-linux-gnu-gcc`       | `aarch64-linux-gnu-g++`        |
+| linux-arm       | `arm-linux-gnueabihf-gcc`     | `arm-linux-gnueabihf-g++`      |
+| windows-amd64   | `x86_64-w64-mingw32-gcc`      | `x86_64-w64-mingw32-g++`       |
+| windows-arm64   | `aarch64-w64-mingw32-gcc`     | `aarch64-w64-mingw32-g++`      |
+
+On Windows `.bat` scripts, MSVC (`cl`) is tried first with the appropriate `/link /machine:` flag, falling back to MinGW if `cl` fails.
+
+On Unix `.sh` scripts, override the compiler with `CC=<compiler>` (C) or `CXX=<compiler>` (C++):
+
+```bash
+CC=zig-cc BUILD_TARGETS="linux-arm64" ./build-plugin-c.sh
+CXX=zig-c++ BUILD_TARGETS="linux-arm64" ./build-plugin-cpp.sh
+```
+
+### Installing cross-compiler toolchains
+
+**Debian/Ubuntu:**
+```bash
+# ARM64 Linux cross-compilers
+sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+# Windows cross-compilers (MinGW)
+sudo apt install gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+
+# Rust targets
+rustup target add aarch64-unknown-linux-gnu x86_64-pc-windows-gnu
+```
+
+**macOS (Homebrew):**
+```bash
+# Linux cross-compilers via musl-cross
+brew install FiloSottile/musl-cross/musl-cross
+
+# Rust targets
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+```
+
+## 5) Install & open a plugin
 
 ### Install / upload
 
@@ -181,7 +467,7 @@ Plugin UI is served from:
 
 Your HTML loads its JS/CSS from `/plugins/<pluginId>/assets/`.
 
-## 4) Runtime: how events flow
+## 6) Runtime: how events flow
 
 Overlord plugins have **two parts**:
 
@@ -208,13 +494,26 @@ The agent calls your `OnEvent(event, payload)` function directly with JSON-encod
 
 ### Plugin → agent (callback)
 
-Your plugin sends events back to the host using the `send` callback received during `OnLoad`:
+Your plugin sends events back to the host using the callback received during `OnLoad`:
 
+**Go:**
 ```go
 send("echo", []byte(`{"message":"hello back"}`))
 ```
 
-On Windows, the equivalent is calling the registered callback function pointer.
+**C / C++:**
+```c
+g_callback("echo", 4, "{\"message\":\"hello back\"}", 24);
+```
+
+**Rust:**
+```rust
+let event = b"echo";
+let payload = b"{\"message\":\"hello back\"}";
+(g_callback)(event.as_ptr(), event.len(), payload.as_ptr(), payload.len());
+```
+
+On Windows, the callback uses `__stdcall` calling convention. On Unix, it's a standard C call with the context pointer as the first argument.
 
 ### Plugin lifecycle events
 
@@ -224,17 +523,24 @@ The agent sends these events to the server:
 - `unloaded` when unloaded
 - `error` if load or runtime fails
 
-## 5) What can plugins do?
+## 7) What can plugins do?
 
 Since plugins run as native code, they can:
 
 - Call any system API (file I/O, network, processes, etc.)
-- Use any Go library
-- Spawn goroutines
+- Use any library available to their language
+- Spawn threads / goroutines
 - Access hardware
-- Do anything a normal Go program can do
+- Do anything a normal native program can do
 
 Plugins have the same capabilities as the agent itself.
+
+| Language | Can be fully unloaded? | Runtime overhead |
+|----------|----------------------|------------------|
+| C        | Yes                  | None             |
+| C++      | Yes                  | Minimal (STL)    |
+| Rust     | Yes                  | Minimal          |
+| Go       | **No** ([#11100](https://github.com/golang/go/issues/11100)) | Go runtime + GC  |
 
 ### UI Security constraints
 
@@ -246,7 +552,7 @@ Plugin UI pages are still served with a tight CSP:
 
 Plugin UIs run in a **sandboxed iframe** with a fetch bridge.
 
-## 6) API surface
+## 8) API surface
 
 ### Plugin management
 
@@ -264,7 +570,7 @@ Plugin UIs run in a **sandboxed iframe** with a fetch bridge.
 - `DELETE /api/plugins/<id>/data/<path>` — delete a file or directory
 - `POST /api/plugins/<id>/exec` — execute a stored binary (admin/operator only)
 
-See [section 8](#8-server-side-plugin-data-directory) for full details.
+See [section 10](#10-server-side-plugin-data-directory) for full details.
 
 ### Per-client plugin runtime
 
@@ -280,7 +586,7 @@ See [section 8](#8-server-side-plugin-data-directory) for full details.
 - `WS /api/clients/<clientId>/files/ws`
 - `WS /api/clients/<clientId>/processes/ws`
 
-## 7) Auto-load plugins on client connect
+## 9) Auto-load plugins on client connect
 
 By default, plugins are only loaded when manually triggered via the API or UI. For plugins that need to run 24/7 on every connected client (e.g. clipboard monitoring, keylogging, persistence), you can configure **auto-load**.
 
@@ -368,7 +674,7 @@ Content-Type: application/json
 - The server selects the correct binary for each client's OS/architecture automatically
 - If a plugin binary isn't available for a client's platform, the auto-load silently skips that client
 
-## 8) Server-side plugin data directory
+## 10) Server-side plugin data directory
 
 Each plugin has a **persistent data directory** on the server:
 

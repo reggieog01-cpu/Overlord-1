@@ -198,6 +198,7 @@ export function createRenderer({
     const oldCheckbox = card.querySelector(".client-checkbox");
     const wasChecked = oldCheckbox?.checked || false;
     const wasTagNoteExpanded = card.dataset.tagNoteExpanded === "true";
+    const wasHwExpanded = card.dataset.hwExpanded === "true";
 
     card.dataset.online = String(!!client.online);
     card.dataset.os = String(client.os || "").toLowerCase();
@@ -218,6 +219,16 @@ export function createRenderer({
     const hasTagNote = customTag.length > 0 && customTagNote.length > 0;
     const isTagNoteExpanded = hasTagNote && wasTagNoteExpanded;
     card.dataset.tagNoteExpanded = isTagNoteExpanded ? "true" : "false";
+    const hasHwInfo = !!(client.cpu || client.gpu || client.ram);
+    const isHwExpanded = hasHwInfo && wasHwExpanded;
+    card.dataset.hwExpanded = isHwExpanded ? "true" : "false";
+    const dedupeGpu = (raw) => {
+      if (!raw) return null;
+      const counts = new Map();
+      raw.split(",").map(s => s.trim()).filter(Boolean).forEach(g => counts.set(g, (counts.get(g) || 0) + 1));
+      return [...counts.entries()].map(([name, n]) => n > 1 ? `${name} <span class="hw-gpu-count">&times;${n}</span>` : escapeHtml(name)).join(", ");
+    };
+    const gpuHtml = dedupeGpu(client.gpu);
     card.className = `card rounded-xl border ${client.bookmarked ? "border-yellow-600/60" : "border-slate-800"} bg-slate-900/70 p-4 shadow-lg ${client.online ? "" : "card-offline"} tone-${os.tone}`;
     const cardThumb = client.thumbnail
       ? (() => {
@@ -259,11 +270,19 @@ export function createRenderer({
           ${hasTagNote ? `<div class="client-tag-note rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-sm text-amber-100 whitespace-pre-wrap break-words max-h-48 overflow-auto ${isTagNoteExpanded ? "" : "hidden"}">${escapeHtml(customTagNote)}</div>` : ""}
           <div class="flex items-center gap-2 flex-wrap text-sm text-slate-300">
             <span class="pill pill-ghost"><i class="fa-regular fa-clock"></i> ${formatAgo(client.lastSeen)}</span>
+            ${hasHwInfo ? `<button type="button" class="hw-toggle pill pill-hw cursor-pointer" aria-expanded="${isHwExpanded ? "true" : "false"}"><i class="fa-solid fa-microchip"></i> Hardware <i class="fa-solid ${isHwExpanded ? "fa-chevron-up" : "fa-chevron-down"}"></i></button>` : ""}
             <span class="pill ${os.tone}"><i class="fa ${os.icon}"></i> ${os.label}</span>
             <span class="pill ${arch.tone}"><i class="fa ${arch.icon}"></i> ${arch.label}</span>
             <span class="pill ${ver.tone}"><i class="fa ${ver.icon}"></i> ${ver.label}</span>
             <span class="pill ${mons.tone}"><i class="fa ${mons.icon}"></i> ${mons.label}</span>
           </div>
+          ${hasHwInfo ? `<div class="hw-panel rounded-lg border border-indigo-900/50 bg-indigo-950/20 px-3 py-2 text-sm text-slate-200 ${isHwExpanded ? "" : "hidden"}">
+            <div class="hw-panel-grid">
+              ${client.cpu ? `<div class="hw-row"><span class="hw-label hw-label-cpu"><i class="fa-solid fa-microchip"></i> CPU</span><span class="hw-value">${escapeHtml(client.cpu)}</span></div>` : ""}
+              ${gpuHtml ? `<div class="hw-row"><span class="hw-label hw-label-gpu"><i class="fa-solid fa-display"></i> GPU</span><span class="hw-value">${gpuHtml}</span></div>` : ""}
+              ${client.ram ? `<div class="hw-row"><span class="hw-label hw-label-ram"><i class="fa-solid fa-memory"></i> RAM</span><span class="hw-value">${escapeHtml(client.ram)}</span></div>` : ""}
+            </div>
+          </div>` : ""}
           <div class="flex items-center gap-2 flex-wrap text-xs text-slate-400 font-mono">
             <span class="pill pill-ghost">ID ${deviceId}</span>
             ${client.hwid ? `<span class="pill pill-ghost">HW ${hwid}</span>` : ""}
@@ -360,6 +379,21 @@ export function createRenderer({
       const tagToggle = card.querySelector(".client-tag-toggle");
       tagToggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
       const chevron = tagToggle?.querySelector(".fa-chevron-up, .fa-chevron-down");
+      if (chevron) {
+        chevron.classList.toggle("fa-chevron-up", expanded);
+        chevron.classList.toggle("fa-chevron-down", !expanded);
+      }
+    });
+
+    card.querySelector(".hw-toggle")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const hwPanel = card.querySelector(".hw-panel");
+      if (!hwPanel) return;
+      const expanded = hwPanel.classList.toggle("hidden") === false;
+      card.dataset.hwExpanded = expanded ? "true" : "false";
+      const hwToggle = card.querySelector(".hw-toggle");
+      hwToggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
+      const chevron = hwToggle?.querySelector(".fa-chevron-up, .fa-chevron-down");
       if (chevron) {
         chevron.classList.toggle("fa-chevron-up", expanded);
         chevron.classList.toggle("fa-chevron-down", !expanded);

@@ -9,6 +9,9 @@ RUN apt-get update \
     build-essential \
     gcc-mingw-w64-x86-64 \
     gcc-mingw-w64-i686 \
+    musl-tools \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
        openssl \
        curl \
        ca-certificates \

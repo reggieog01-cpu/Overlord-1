@@ -212,14 +212,26 @@ export async function loadPluginBundle(
   }
 
   if (!binaryPath) {
+    const platformKey = clientOS && clientArch ? `${clientOS}-${clientArch}` : "unknown";
     const files = await fs.readdir(dir);
-    const found = files.find(
-      (f) =>
-        f.toLowerCase().endsWith(".so") ||
-        f.toLowerCase().endsWith(".dll") ||
-        f.toLowerCase().endsWith(".dylib"),
-    );
-    if (!found) throw new Error(`No plugin binary found for ${pluginId} (${clientOS}-${clientArch})`);
+    const archRegex = /-(linux|darwin|windows|freebsd)-(amd64|arm64|arm|386)\.(so|dll|dylib)$/i;
+
+    const found = files.find((f) => {
+      const m = f.match(archRegex);
+      if (m) {
+        return (
+          m[1].toLowerCase() === (clientOS || "").toLowerCase() &&
+          m[2].toLowerCase() === (clientArch || "").toLowerCase()
+        );
+      }
+      const fl = f.toLowerCase();
+      return fl.endsWith(".so") || fl.endsWith(".dll") || fl.endsWith(".dylib");
+    });
+    if (!found) {
+      throw new Error(
+        `No compatible plugin binary for ${pluginId} (client=${platformKey}, available=[${Object.keys(manifest.binaries || {}).join(", ")}])`,
+      );
+    }
     binaryPath = path.join(dir, found);
   }
 

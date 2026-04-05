@@ -530,6 +530,7 @@ async function startServer() {
     sendHVNCCommand,
     notifyConsoleClosed,
     clearPendingNotificationScreenshots: notificationPluginHandlers.clearPendingNotificationScreenshots,
+    clearClientPluginState: notificationPluginHandlers.clearClientPluginState,
     notifyRemoteDesktopStatus,
     handleBuildTagConnection,
     notifyDashboard: sessionManager.notifyDashboardViewers,
