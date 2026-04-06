@@ -1992,3 +1992,356 @@ tbody tr:hover {
     transform: none !important;
   }
 }
+
+/* ============================================================
+   SIDEBAR LAYOUT
+   ============================================================ */
+
+:root {
+  --sb-w: 224px;
+  --sb-w-collapsed: 64px;
+  --sb-speed: 240ms;
+  --sb-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Offset body content so it sits beside the sidebar */
+body.sb-ready {
+  padding-left: var(--sb-w);
+  transition: padding-left var(--sb-speed) var(--sb-ease);
+}
+body.sb-ready.sb-collapsed {
+  padding-left: var(--sb-w-collapsed);
+}
+
+/* On mobile the sidebar becomes a drawer, not a persistent rail */
+@media (max-width: 767px) {
+  body.sb-ready,
+  body.sb-ready.sb-collapsed {
+    padding-left: 0;
+    padding-top: 52px;
+  }
+}
+
+/* ---- The sidebar element (#top-nav) ---- */
+body.sb-ready #top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100dvh;
+  width: var(--sb-w);
+  background: rgba(2, 8, 22, 0.97);
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  overflow: hidden;
+  padding: 0;
+  transition: width var(--sb-speed) var(--sb-ease);
+}
+body.sb-collapsed #top-nav {
+  width: var(--sb-w-collapsed);
+}
+@media (max-width: 767px) {
+  body.sb-ready #top-nav {
+    width: var(--sb-w) !important;
+    transform: translateX(calc(-100% - 2px));
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.55);
+    z-index: 51;
+    transition: transform var(--sb-speed) var(--sb-ease);
+  }
+  body.sb-open #top-nav {
+    transform: translateX(0);
+  }
+}
+
+/* ---- Sidebar header (logo row) ---- */
+.sb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 12px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  min-width: 0;
+}
+body.sb-collapsed .sb-header {
+  justify-content: center;
+  padding: 16px 0 12px;
+}
+.sb-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #f1f5f9;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  opacity: 1;
+  transition: opacity var(--sb-speed) var(--sb-ease);
+}
+body.sb-collapsed .sb-logo {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  flex: 0;
+  overflow: hidden;
+}
+.sb-logo .sb-text {
+  overflow: hidden;
+  opacity: 1;
+  max-width: 160px;
+  transition: opacity var(--sb-speed) var(--sb-ease), max-width var(--sb-speed) var(--sb-ease);
+}
+body.sb-collapsed .sb-logo .sb-text {
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- Collapse toggle button (desktop only) ---- */
+.sb-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sb-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+.sb-collapse-btn i {
+  display: block;
+  font-size: 0.7rem;
+  transition: transform var(--sb-speed) var(--sb-ease);
+}
+body.sb-collapsed .sb-collapse-btn i {
+  transform: rotate(180deg);
+}
+@media (max-width: 767px) {
+  .sb-collapse-btn { display: none; }
+}
+
+/* ---- Nav section ---- */
+.sb-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.25) transparent;
+}
+.sb-nav::-webkit-scrollbar { width: 4px; }
+.sb-nav::-webkit-scrollbar-track { background: transparent; }
+.sb-nav::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
+}
+
+/* ---- Shared sidebar link style (<a> and <button>) ---- */
+.sb-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: #7c8fa3;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  position: relative;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.sb-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+/* Collapsed: center icon, fill the rail */
+body.sb-collapsed .sb-link {
+  justify-content: center;
+  padding: 12px 0;
+}
+.sb-icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 1rem;
+}
+body.sb-collapsed .sb-icon {
+  width: 22px;
+  font-size: 1.1rem;
+}
+.sb-link .sb-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  max-width: 200px;
+  transition: opacity var(--sb-speed) var(--sb-ease), max-width var(--sb-speed) var(--sb-ease);
+}
+body.sb-collapsed .sb-link .sb-text {
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Active link */
+.sb-link.nav-active {
+  background: rgba(99, 102, 241, 0.14);
+  color: #e2e8f0;
+  border-color: rgba(99, 102, 241, 0.28);
+}
+.sb-link.nav-active:hover {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+/* Danger link (logout) */
+.sb-link--danger { color: #f87171; }
+.sb-link--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+/* ---- Notification bell badge ---- */
+.sb-notify-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sb-notify-badge {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ---- Inline badge (purgatory count) ---- */
+.sb-inline-badge {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #d97706;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.sb-inline-badge:not(.hidden) {
+  display: inline-flex;
+}
+
+/* ---- Utility section (bottom of sidebar) ---- */
+.sb-utility {
+  padding: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* ---- Mobile topbar (drawer handle) ---- */
+#sb-mobile-bar {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  z-index: 49;
+  background: rgba(2, 8, 22, 0.97);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+}
+@media (max-width: 767px) {
+  #sb-mobile-bar { display: flex; }
+}
+.sb-mobile-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.sb-mobile-brand {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+/* ---- Mobile backdrop ---- */
+#sb-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+}
+body.sb-open #sb-backdrop { display: block; }
+
+/* Notify-toggle enabled/disabled color — ID specificity beats .sb-link */
+#notify-toggle.text-emerald-200 { color: #a7f3d0; }
+#notify-toggle.text-slate-300   { color: #cbd5e1; }
+#notify-toggle.border-emerald-500\/40 { border-color: rgba(16, 185, 129, 0.4); }

@@ -7,6 +7,7 @@ import {
 } from "./notify-client.js";
 
 const PREF_REFRESH_KEY = "overlord_refresh_interval_seconds";
+const NAV_MODE_KEY = "sb_mode";
 
 const usernameEl = document.getElementById("settings-username");
 const roleEl = document.getElementById("settings-role");
@@ -276,6 +277,17 @@ async function loadTlsSettings() {
   setTlsFormDisabled(false);
 }
 
+function updateNavLayoutButtons(mode, sidebarBtn, topbarBtn) {
+  const active = ["bg-indigo-600/80", "border-indigo-500", "text-white"];
+  const inactive = ["bg-slate-800", "border-slate-700", "text-slate-400", "hover:bg-slate-700", "hover:text-slate-200"];
+  const base = ["nav-layout-btn", "flex-1", "flex", "items-center", "justify-center", "gap-2", "px-3", "py-2", "rounded-lg", "border", "text-sm", "font-medium", "transition-colors"];
+
+  sidebarBtn.className = [...base, ...(mode === "sidebar" ? active : inactive)].join(" ");
+  topbarBtn.className = [...base, ...(mode === "topbar" ? active : inactive)].join(" ");
+  sidebarBtn.dataset.selected = mode === "sidebar" ? "true" : "false";
+  topbarBtn.dataset.selected = mode === "topbar" ? "true" : "false";
+}
+
 function loadPrefs() {
   prefNotificationsInput.checked = getNotificationsEnabled();
   if (prefDesktopNotificationsInput) {
@@ -283,6 +295,13 @@ function loadPrefs() {
   }
   const refreshSeconds = Number(localStorage.getItem(PREF_REFRESH_KEY) || 8);
   prefRefreshSecondsInput.value = String(Math.min(120, Math.max(3, refreshSeconds)));
+
+  const navMode = localStorage.getItem(NAV_MODE_KEY) || "topbar";
+  const sidebarBtn = document.getElementById("pref-nav-sidebar");
+  const topbarBtn = document.getElementById("pref-nav-topbar");
+  if (sidebarBtn && topbarBtn) {
+    updateNavLayoutButtons(navMode === "topbar" ? "topbar" : "sidebar", sidebarBtn, topbarBtn);
+  }
 }
 
 async function loadCurrentUser() {
@@ -369,6 +388,7 @@ function savePrefs(event) {
     if (prefDesktopNotificationsHint) prefDesktopNotificationsHint.classList.add("hidden");
     showMessage("Preferences saved.");
   }
+
 }
 
 async function saveSecurityPolicy(event) {
@@ -827,6 +847,22 @@ async function init() {
 
     passwordForm.addEventListener("submit", updatePassword);
     prefsForm.addEventListener("submit", savePrefs);
+
+    const sidebarBtn = document.getElementById("pref-nav-sidebar");
+    const topbarBtn = document.getElementById("pref-nav-topbar");
+    if (sidebarBtn && topbarBtn) {
+      sidebarBtn.addEventListener("click", () => {
+        if (localStorage.getItem(NAV_MODE_KEY) === "sidebar") return;
+        localStorage.setItem(NAV_MODE_KEY, "sidebar");
+        window.location.reload();
+      });
+      topbarBtn.addEventListener("click", () => {
+        if (localStorage.getItem(NAV_MODE_KEY) === "topbar") return;
+        localStorage.setItem(NAV_MODE_KEY, "topbar");
+        window.location.reload();
+      });
+    }
+
     securityForm.addEventListener("submit", saveSecurityPolicy);
     tlsForm.addEventListener("submit", saveTlsSettings);
     tlsCertbotAutoBtn.addEventListener("click", runCertbotAutoSetup);

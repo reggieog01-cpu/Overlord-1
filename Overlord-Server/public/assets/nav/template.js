@@ -1,4 +1,6 @@
-export function mountNav(host) {
+export const NAV_MODE_KEY = "sb_mode";
+
+function mountTopbar(host) {
   host.className =
     "sticky top-0 z-10 w-full px-5 py-3 bg-slate-950/80 backdrop-blur border-b border-slate-800";
 
@@ -22,110 +24,61 @@ export function mountNav(host) {
         id="nav-panel"
         class="hidden md:flex md:flex-1 md:items-center md:justify-between gap-3"
       >
-      <nav id="nav-links" class="flex flex-wrap items-center gap-2 md:flex-1 md:justify-center">
-        <a
-          href="/"
-          id="nav-clients"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-display text-sky-400"></i> Clients</a
-        >
-        <a
-          href="/metrics"
-          id="metrics-link"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-chart-line text-emerald-400"></i> Metrics</a
-        >
-        <a
-          href="/logs"
-          id="logs-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-clipboard-list text-amber-400"></i> Logs</a
-        >
-        <a
-          href="/scripts"
-          id="scripts-link"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-code text-cyan-400"></i> Scripts</a
-        >
-        <a
-          href="/socks5-manager"
-          id="socks5-link"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-network-wired text-sky-400"></i> Proxies</a
-        >
-        <a
-          href="/plugins"
-          id="plugins-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-puzzle-piece text-violet-400"></i> Plugins</a
-        >
-        <a
-          href="/build"
-          id="build-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-hammer text-orange-400"></i> Builder</a
-        >
-        <a
-          href="/sol-publish"
-          id="sol-publish-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-link-slash text-purple-400"></i> Sol Publish</a
-        >
-        <a
-          href="/notifications"
-          id="notifications-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-bell text-yellow-400"></i> Notifications</a
-        >
-        <a
-          href="/users"
-          id="users-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-users text-indigo-400"></i> Users</a
-        >
-        <a
-          href="/purgatory"
-          id="enrollment-link"
-          class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-          ><i class="fa-solid fa-user-clock text-amber-400"></i> Purgatory<span id="enrollment-badge" class="hidden min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center"></span></a
-        >
-      </nav>
-      <div id="nav-utility" class="flex flex-wrap items-center gap-2 md:w-auto md:justify-end md:shrink-0">
-        <button
-          id="notify-toggle"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 text-slate-300 hover:bg-slate-800"
-          title="Toggle notifications"
-          aria-label="Toggle notifications"
-        >
-          <i class="fa-solid fa-bell"></i>
-          <span
-            id="notify-badge"
-            class="hidden min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center"
-          ></span>
-        </button>
-        <button
-          id="account-settings-btn"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-slate-800 text-slate-100 min-w-0 max-w-full md:max-w-none border border-slate-700/70 hover:bg-slate-700 transition-colors"
-          title="Open settings"
-          aria-label="Open settings"
-          type="button"
-        >
-          <i class="fa-solid fa-user-shield text-sky-300"></i>
-          <span id="username-display" class="truncate max-w-[110px] sm:max-w-[180px] md:max-w-none">Loading...</span>
-          <span
-            id="role-badge"
-            class="text-sm px-2 py-0.5 rounded-full bg-slate-700 shrink-0"
-          ></span>
-        </button>
-        <button
-          id="logout-btn"
-          class="group inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/40 hover:bg-red-800/60 text-red-100 border border-red-700/60 transition-colors"
-          title="Logout"
-          aria-label="Logout"
-        >
-          <i class="fa-solid fa-right-from-bracket text-rose-300 group-hover:text-rose-200 transition-colors"></i>
-        </button>
-      </div>
+        <nav id="nav-links" class="flex flex-wrap items-center gap-2 md:flex-1 md:justify-center">
+          <a href="/" id="nav-clients"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-display text-sky-400"></i> Clients</a>
+          <a href="/metrics" id="metrics-link"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-chart-line text-emerald-400"></i> Metrics</a>
+          <a href="/logs" id="logs-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-clipboard-list text-amber-400"></i> Logs</a>
+          <a href="/scripts" id="scripts-link"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-code text-cyan-400"></i> Scripts</a>
+          <a href="/socks5-manager" id="socks5-link"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-network-wired text-sky-400"></i> Proxies</a>
+          <a href="/plugins" id="plugins-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-puzzle-piece text-violet-400"></i> Plugins</a>
+          <a href="/build" id="build-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-hammer text-orange-400"></i> Builder</a>
+          <a href="/sol-publish" id="sol-publish-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-link-slash text-purple-400"></i> Sol Publish</a>
+          <a href="/notifications" id="notifications-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-bell text-yellow-400"></i> Notifications</a>
+          <a href="/users" id="users-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-users text-indigo-400"></i> Users</a>
+          <a href="/purgatory" id="enrollment-link"
+            class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+            ><i class="fa-solid fa-user-clock text-amber-400"></i> Purgatory<span id="enrollment-badge" class="hidden min-w-[20px] h-5 px-1 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center"></span></a>
+        </nav>
+        <div id="nav-utility" class="flex flex-wrap items-center gap-2 md:w-auto md:justify-end md:shrink-0">
+          <button id="notify-toggle"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/70 border border-slate-800 text-slate-300 hover:bg-slate-800"
+            title="Toggle notifications" aria-label="Toggle notifications">
+            <i class="fa-solid fa-bell"></i>
+            <span id="notify-badge" class="hidden min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center"></span>
+          </button>
+          <button id="account-settings-btn"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-slate-800 text-slate-100 min-w-0 max-w-full md:max-w-none border border-slate-700/70 hover:bg-slate-700 transition-colors"
+            title="Open settings" aria-label="Open settings" type="button">
+            <i class="fa-solid fa-user-shield text-sky-300"></i>
+            <span id="username-display" class="truncate max-w-[110px] sm:max-w-[180px] md:max-w-none">Loading...</span>
+            <span id="role-badge" class="text-sm px-2 py-0.5 rounded-full bg-slate-700 shrink-0"></span>
+          </button>
+          <button id="logout-btn"
+            class="group inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900/40 hover:bg-red-800/60 text-red-100 border border-red-700/60 transition-colors"
+            title="Logout" aria-label="Logout">
+            <i class="fa-solid fa-right-from-bracket text-rose-300 group-hover:text-rose-200 transition-colors"></i>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -133,6 +86,7 @@ export function mountNav(host) {
   return {
     toggle: document.getElementById("nav-toggle"),
     panel: document.getElementById("nav-panel"),
+    collapseBtn: null,
     navLinks: document.getElementById("nav-links"),
     navUtility: document.getElementById("nav-utility"),
     logoutBtn: document.getElementById("logout-btn"),
@@ -152,3 +106,143 @@ export function mountNav(host) {
     enrollmentBadge: document.getElementById("enrollment-badge"),
   };
 }
+
+function mountSidebar(host) {
+  // Sidebar HTML injected into the fixed #top-nav element
+  host.innerHTML = `
+    <div class="sb-header">
+      <a href="/" class="sb-logo">
+        <i class="fa-solid fa-crown header-crown sb-icon"></i>
+        <span class="sb-text">Overlord</span>
+      </a>
+      <button id="sb-collapse-btn" class="sb-collapse-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+    </div>
+
+    <nav id="nav-links" class="sb-nav">
+      <a href="/" id="nav-clients" class="sb-link" title="Clients">
+        <i class="fa-solid fa-display text-sky-400 sb-icon"></i>
+        <span class="sb-text">Clients</span>
+      </a>
+      <a href="/metrics" id="metrics-link" class="sb-link" title="Metrics">
+        <i class="fa-solid fa-chart-line text-emerald-400 sb-icon"></i>
+        <span class="sb-text">Metrics</span>
+      </a>
+      <a href="/logs" id="logs-link" class="sb-link hidden" title="Logs">
+        <i class="fa-solid fa-clipboard-list text-amber-400 sb-icon"></i>
+        <span class="sb-text">Logs</span>
+      </a>
+      <a href="/scripts" id="scripts-link" class="sb-link" title="Scripts">
+        <i class="fa-solid fa-code text-cyan-400 sb-icon"></i>
+        <span class="sb-text">Scripts</span>
+      </a>
+      <a href="/socks5-manager" id="socks5-link" class="sb-link" title="Proxies">
+        <i class="fa-solid fa-network-wired text-sky-400 sb-icon"></i>
+        <span class="sb-text">Proxies</span>
+      </a>
+      <a href="/plugins" id="plugins-link" class="sb-link hidden" title="Plugins">
+        <i class="fa-solid fa-puzzle-piece text-violet-400 sb-icon"></i>
+        <span class="sb-text">Plugins</span>
+      </a>
+      <a href="/build" id="build-link" class="sb-link hidden" title="Builder">
+        <i class="fa-solid fa-hammer text-orange-400 sb-icon"></i>
+        <span class="sb-text">Builder</span>
+      </a>
+      <a href="/sol-publish" id="sol-publish-link" class="sb-link hidden" title="Sol Publish">
+        <i class="fa-solid fa-link-slash text-purple-400 sb-icon"></i>
+        <span class="sb-text">Sol Publish</span>
+      </a>
+      <a href="/notifications" id="notifications-link" class="sb-link hidden" title="Notifications">
+        <i class="fa-solid fa-bell text-yellow-400 sb-icon"></i>
+        <span class="sb-text">Notifications</span>
+      </a>
+      <a href="/users" id="users-link" class="sb-link hidden" title="Users">
+        <i class="fa-solid fa-users text-indigo-400 sb-icon"></i>
+        <span class="sb-text">Users</span>
+      </a>
+      <a href="/purgatory" id="enrollment-link" class="sb-link hidden" title="Purgatory">
+        <i class="fa-solid fa-user-clock text-amber-400 sb-icon"></i>
+        <span class="sb-text">
+          Purgatory
+          <span id="enrollment-badge" class="sb-inline-badge hidden"></span>
+        </span>
+      </a>
+    </nav>
+
+    <div id="nav-utility" class="sb-utility">
+      <button id="notify-toggle" class="sb-link"
+        title="Toggle notifications" aria-label="Toggle notifications">
+        <span class="sb-notify-wrap sb-icon">
+          <i class="fa-solid fa-bell"></i>
+          <span id="notify-badge" class="sb-notify-badge hidden"></span>
+        </span>
+        <span class="sb-text">Notifications</span>
+      </button>
+      <button id="account-settings-btn" class="sb-link"
+        title="Open settings" aria-label="Open settings" type="button">
+        <i class="fa-solid fa-user-shield text-sky-300 sb-icon"></i>
+        <span class="sb-text">
+          <span id="username-display" class="truncate">Loading...</span>
+          <span id="role-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-700 shrink-0"></span>
+        </span>
+      </button>
+      <button id="logout-btn" class="sb-link sb-link--danger"
+        title="Logout" aria-label="Logout">
+        <i class="fa-solid fa-right-from-bracket sb-icon"></i>
+        <span class="sb-text">Logout</span>
+      </button>
+    </div>
+  `;
+
+  // Mobile topbar
+  const mobileBar = document.createElement("div");
+  mobileBar.id = "sb-mobile-bar";
+  mobileBar.innerHTML = `
+    <button id="nav-toggle" class="sb-mobile-toggle" aria-label="Open menu">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <a href="/" class="sb-mobile-brand">
+      <i class="fa-solid fa-crown header-crown" style="font-size:0.85rem"></i>
+      <span>Overlord</span>
+    </a>
+  `;
+  host.insertAdjacentElement("afterend", mobileBar);
+
+  // Mobile backdrop
+  const backdrop = document.createElement("div");
+  backdrop.id = "sb-backdrop";
+  document.body.appendChild(backdrop);
+
+  return {
+    toggle: document.getElementById("nav-toggle"),
+    collapseBtn: document.getElementById("sb-collapse-btn"),
+    panel: host,
+    navLinks: document.getElementById("nav-links"),
+    navUtility: document.getElementById("nav-utility"),
+    logoutBtn: document.getElementById("logout-btn"),
+    notifyToggle: document.getElementById("notify-toggle"),
+    notifyBadge: document.getElementById("notify-badge"),
+    accountSettingsBtn: document.getElementById("account-settings-btn"),
+    usernameDisplay: document.getElementById("username-display"),
+    roleBadge: document.getElementById("role-badge"),
+    usersLink: document.getElementById("users-link"),
+    buildLink: document.getElementById("build-link"),
+    solPublishLink: document.getElementById("sol-publish-link"),
+    pluginsLink: document.getElementById("plugins-link"),
+    scriptsLink: document.getElementById("scripts-link"),
+    logsLink: document.getElementById("logs-link"),
+    notificationsLink: document.getElementById("notifications-link"),
+    enrollmentLink: document.getElementById("enrollment-link"),
+    enrollmentBadge: document.getElementById("enrollment-badge"),
+  };
+}
+
+export function mountNav(host) {
+  const mode = localStorage.getItem(NAV_MODE_KEY);
+  if (mode === "sidebar") {
+    return mountSidebar(host);
+  }
+  return mountTopbar(host);
+}
+
