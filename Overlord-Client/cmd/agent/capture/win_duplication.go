@@ -717,7 +717,7 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 		return nil, fmt.Errorf("dxgi: acquire frame failed 0x%x", hr)
 	}
 	if resource != nil {
-		resource.Release()
+		defer resource.Release()
 	}
 
 	width := int(s.desc.ModeDesc.Width)

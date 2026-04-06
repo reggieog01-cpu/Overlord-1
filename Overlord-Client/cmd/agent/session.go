@@ -679,14 +679,16 @@ func runSession(ctx context.Context, cancel context.CancelFunc, conn *websocket.
 			}
 		}()
 
-		if err := readLoop(ctx, conn, env, dispatcher); err != nil {
-			log.Printf("readLoop ended: %v", err)
-			select {
-			case readErr <- err:
-			default:
-			}
-			cancel()
+		err := readLoop(ctx, conn, env, dispatcher)
+		if err == nil {
+			err = fmt.Errorf("readLoop exited unexpectedly")
 		}
+		log.Printf("readLoop ended: %v", err)
+		select {
+		case readErr <- err:
+		default:
+		}
+		cancel()
 	}()
 
 	shotCtx, cancelShots := context.WithCancel(ctx)
