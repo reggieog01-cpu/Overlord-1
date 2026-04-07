@@ -89,6 +89,7 @@ export function handleHello(
   info.monitors = payload.monitors;
   info.monitorInfo = (payload as any).monitorInfo || info.monitorInfo;
   info.inMemory = !!(payload as any).inMemory;
+  info.isAdmin = !!(payload as any).isAdmin;
   info.cpu = (payload as any).cpu || info.cpu;
   info.gpu = (payload as any).gpu || info.gpu;
   info.ram = (payload as any).ram || info.ram;
@@ -117,6 +118,7 @@ export function handleHello(
     cpu: info.cpu,
     gpu: info.gpu,
     ram: info.ram,
+    isAdmin: info.isAdmin,
     lastSeen: info.lastSeen,
     online: 1,
   });
@@ -135,6 +137,7 @@ export function handlePing(info: ClientInfo, payload: WireMessage, ws: any) {
       id: info.id,
       lastSeen: info.lastSeen,
       online: 1,
+      isAdmin: info.isAdmin,
     });
   }
   ws.send(encodeMessage({ type: "pong", ts: payload.ts || Date.now() }));
@@ -191,6 +194,7 @@ export function handlePong(info: ClientInfo, payload: WireMessage) {
       pingMs: info.pingMs,
       lastSeen: info.lastSeen,
       online: 1,
+      isAdmin: info.isAdmin,
     });
     lastClientDbSync.set(info.id, nowTs);
 
@@ -201,6 +205,7 @@ export function handlePong(info: ClientInfo, payload: WireMessage) {
         id: info.id,
         lastSeen: info.lastSeen,
         online: 1,
+        isAdmin: info.isAdmin,
       });
     }
   }
@@ -251,7 +256,7 @@ export function handleFrame(info: ClientInfo, payload: any) {
     info.lastSeen = now;
     info.online = true;
     if (shouldSyncClientToDb(info.id, now)) {
-      queueClientDbUpdate({ id: info.id, lastSeen: now, online: 1 });
+      queueClientDbUpdate({ id: info.id, lastSeen: now, online: 1, isAdmin: info.isAdmin });
     }
   }
 }

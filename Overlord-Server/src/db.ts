@@ -79,6 +79,9 @@ try {
 try {
   db.run(`ALTER TABLE clients ADD COLUMN ram TEXT`);
 } catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
+} catch {}
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_public_key ON clients(public_key);`,
 );
@@ -250,8 +253,8 @@ export function upsertClientRow(
 ) {
   const now = partial.lastSeen ?? Date.now();
   db.run(
-    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint, cpu, gpu, ram)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint, cpu, gpu, ram, is_admin)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0))
      ON CONFLICT(id) DO UPDATE SET
        hwid=COALESCE(excluded.hwid, clients.hwid),
        role=COALESCE(excluded.role, clients.role),
@@ -274,7 +277,8 @@ export function upsertClientRow(
        key_fingerprint=COALESCE(excluded.key_fingerprint, clients.key_fingerprint),
        cpu=COALESCE(excluded.cpu, clients.cpu),
        gpu=COALESCE(excluded.gpu, clients.gpu),
-       ram=COALESCE(excluded.ram, clients.ram)
+       ram=COALESCE(excluded.ram, clients.ram),
+       is_admin=COALESCE(excluded.is_admin, clients.is_admin)
     `,
     partial.id,
     partial.hwid ?? partial.id,
@@ -299,6 +303,7 @@ export function upsertClientRow(
     partial.cpu ?? null,
     partial.gpu ?? null,
     partial.ram ?? null,
+    partial.isAdmin !== undefined ? (partial.isAdmin ? 1 : 0) : null,
   );
 
   if (partial.hwid) {
@@ -539,6 +544,8 @@ export function listClients(filters: ListFilters): ListResult {
         return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) ASC, id ASC`;
       case "country_desc":
         return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) DESC, id ASC`;
+      case "admin_first":
+        return `ORDER BY ${online}, ${bookmark}, is_admin DESC, id ASC`;
       default:
         return `ORDER BY ${online}, ${bookmark}, last_seen DESC, id ASC`;
     }
@@ -556,7 +563,7 @@ export function listClients(filters: ListFilters): ListResult {
 
   const rows = db
     .query<any>(
-      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint, cpu, gpu, ram, disconnect_reason as disconnectReason, disconnect_detail as disconnectDetail
+      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint, cpu, gpu, ram, is_admin as isAdmin, disconnect_reason as disconnectReason, disconnect_detail as disconnectDetail
        FROM clients
        ${whereSql}
        ${orderBy}
@@ -588,6 +595,7 @@ export function listClients(filters: ListFilters): ListResult {
     cpu: c.cpu || null,
     gpu: c.gpu || null,
     ram: c.ram || null,
+    isAdmin: c.isAdmin === 1,
     disconnectReason: c.disconnectReason || null,
     disconnectDetail: c.disconnectDetail || null,
     thumbnail: getThumbnail(c.id),

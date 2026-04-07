@@ -205,6 +205,7 @@ export function createRenderer({
     card.dataset.nickname = String(client.nickname || "");
     card.dataset.customTag = String(client.customTag || "");
     card.dataset.bookmarked = String(!!client.bookmarked);
+    card.dataset.admin = String(!!client.isAdmin);
     card._customTagNote = String(client.customTagNote || "");
     const os = osBadge(client.os || "unknown");
     const arch = archBadge(client.arch || "");
@@ -266,6 +267,7 @@ export function createRenderer({
               <i class="fa-solid fa-circle"></i>
               ${client.online ? "Online" : "Offline"}
             </span>
+            ${client.isAdmin ? `<span class="pill pill-admin"><i class="fa-solid fa-shield-halved"></i> Admin</span>` : ""}
             ${!client.online && client.disconnectReason && client.disconnectReason !== "normal" ? (() => {
               const iconMap = { panic: "fa-skull-crossbones", crash: "fa-skull", timeout: "fa-clock", network: "fa-plug-circle-xmark" };
               const colorMap = { panic: "text-red-400", crash: "text-red-400", timeout: "text-amber-400", network: "text-slate-400" };

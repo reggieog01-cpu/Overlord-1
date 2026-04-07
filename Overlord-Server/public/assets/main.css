@@ -429,6 +429,11 @@ p {
   color: #94a3b8;
   border-color: rgba(71, 85, 105, 0.55);
 }
+.pill-admin {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fef08a;
+  border-color: rgba(234, 179, 8, 0.45);
+}
 
 /* Hardware info toggle & panel */
 .pill-hw {

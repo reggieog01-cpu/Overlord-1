@@ -25,11 +25,14 @@ export function handleClientsRequest(req: Request): Response {
   const result = listClients({ page, pageSize, search, sort, statusFilter, osFilter, enrollmentFilter: "approved" });
   const items = result.items.map((item) => {
     const live = clientManager.getClient(item.id);
-    if (live?.monitorInfo?.length) {
+    if (live) {
       return {
         ...item,
-        monitors: live.monitorInfo.length,
-        monitorInfo: live.monitorInfo,
+        isAdmin: live.isAdmin ?? item.isAdmin,
+        ...(live.monitorInfo?.length ? {
+          monitors: live.monitorInfo.length,
+          monitorInfo: live.monitorInfo,
+        } : {}),
       };
     }
     return item;
