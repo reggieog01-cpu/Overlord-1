@@ -11,12 +11,46 @@ type WsUpgradeDeps = {
   isAuthorizedAgentRequest: (req: Request, url: URL) => boolean;
 };
 
+const WS_RATE_WINDOW_MS = 10_000;
+const WS_RATE_MAX = 30;
+const wsRateMap = new Map<string, { count: number; windowStart: number }>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of wsRateMap.entries()) {
+    if (now - entry.windowStart > WS_RATE_WINDOW_MS * 2) {
+      wsRateMap.delete(ip);
+    }
+  }
+}, 30_000);
+
+function isWsRateLimited(ip: string): boolean {
+  if (!ip) return false;
+  const now = Date.now();
+  const entry = wsRateMap.get(ip);
+  if (!entry || now - entry.windowStart > WS_RATE_WINDOW_MS) {
+    wsRateMap.set(ip, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count++;
+  if (entry.count > WS_RATE_MAX) {
+    logger.warn(`[rate-limit] WebSocket upgrade rate limit exceeded for IP ${ip}`);
+    return true;
+  }
+  return false;
+}
+
 export async function handleWsUpgradeRoutes(
   req: Request,
   url: URL,
   server: RequestServer,
   deps: WsUpgradeDeps,
 ): Promise<Response | null> {
+  const ip = server.requestIP(req)?.address || "";
+  if (isWsRateLimited(ip)) {
+    return new Response("Too Many Requests", { status: 429 });
+  }
+
   const consoleWsMatch = url.pathname.match(/^\/api\/clients\/(.+)\/console\/ws$/);
   if (consoleWsMatch) {
     const user = await authenticateRequest(req);

@@ -113,6 +113,20 @@ export async function handleDeployRoutes(
       return new Response("Only http and https URLs are allowed", { status: 400 });
     }
 
+    const hostname = parsed.hostname.toLowerCase();
+    const BLOCKED_HOSTS = ["localhost", "metadata.google.internal", "169.254.169.254"];
+    if (
+      BLOCKED_HOSTS.includes(hostname) ||
+      hostname.endsWith(".internal") ||
+      hostname.startsWith("127.") ||
+      hostname === "[::1]" ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname) ||
+      hostname.startsWith("169.254.") ||
+      hostname.startsWith("0.")
+    ) {
+      return new Response("URLs pointing to private/internal addresses are not allowed", { status: 400 });
+    }
+
     const rawFilename = path.basename(parsed.pathname) || "download.bin";
     const filename = rawFilename.replace(/[^a-zA-Z0-9._\-]/g, "_").substring(0, 128) || "download.bin";
 

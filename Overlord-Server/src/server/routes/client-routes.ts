@@ -561,7 +561,7 @@ export async function handleClientRoutes(
               reject(new Error("Script execution timed out after 5 minutes"));
             }, 5 * 60 * 1000);
 
-            deps.pendingScripts.set(cmdId, { resolve, reject, timeout });
+            deps.pendingScripts.set(cmdId, { resolve, reject, timeout, clientId: targetId });
           });
 
           target.ws.send(encodeMessage({
@@ -595,7 +595,7 @@ export async function handleClientRoutes(
               deps.pendingCommandReplies.delete(cmdId);
               reject(new Error("Voice capability probe timed out"));
             }, 30_000);
-            deps.pendingCommandReplies.set(cmdId, { resolve, reject, timeout });
+            deps.pendingCommandReplies.set(cmdId, { resolve, reject, timeout, clientId: targetId });
           });
 
           target.ws.send(

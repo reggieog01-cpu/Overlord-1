@@ -14,7 +14,7 @@ import { showCertBannerIfNeeded } from "./cert-banner.js";
 const host = document.getElementById("top-nav");
 if (host) {
   const refs = mountNav(host);
-  showCertBannerIfNeeded(host);
+  showCertBannerIfNeeded(document.getElementById("sb-mobile-bar") || host);
   const { applyAdaptiveNavLayout } = createAdaptiveNavController(host, refs);
 
   const path = window.location.pathname;
@@ -26,18 +26,16 @@ if (host) {
     "/socks5-manager": "socks5-link",
     "/plugins": "plugins-link",
     "/build": "build-link",
+    "/sol-publish": "sol-publish-link",
     "/users": "users-link",
     "/user-client-access": "users-link",
     "/notifications": "notifications-link",
+    "/file-share": "file-share-link",
   };
   const activeId = activeMap[path];
   if (activeId) {
     const el = document.getElementById(activeId);
-    if (el) {
-      el.classList.remove("bg-slate-900/70", "text-slate-300");
-      el.classList.add("bg-slate-800", "text-slate-50");
-      el.classList.add("nav-active");
-    }
+    if (el) el.classList.add("nav-active");
   }
   if (refs.logoutBtn && !refs.logoutBtn.dataset.boundLogout) {
     refs.logoutBtn.dataset.boundLogout = "true";

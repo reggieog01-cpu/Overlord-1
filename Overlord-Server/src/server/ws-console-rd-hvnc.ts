@@ -120,6 +120,8 @@ function buildViewerFrameBuffer(bytes: Uint8Array, header?: any): Uint8Array {
   return buf;
 }
 
+const VIEWER_BACKPRESSURE_BYTES = 4 * 1024 * 1024; // 4 MB
+
 function broadcastFrameToViewers(
   sessions: Iterable<{ viewer: ServerWebSocket<SocketData> }>,
   buf: Uint8Array,
@@ -130,6 +132,10 @@ function broadcastFrameToViewers(
   const byteLen = buf.length;
   for (const session of sessions) {
     try {
+      const buffered = session.viewer.getBufferedAmount?.() ?? 0;
+      if (buffered > VIEWER_BACKPRESSURE_BYTES) {
+        continue;
+      }
       session.viewer.send(buf);
       metrics.recordBytesSent(byteLen);
       sent = true;

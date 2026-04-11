@@ -382,20 +382,11 @@ function initializeRenderer() {
     anime
       .timeline({ easing: "easeOutQuad" })
       .add({
-        targets: "header",
+        targets: "main > div > div:first-child",
         opacity: [0, 1],
-        translateY: [-20, 0],
-        duration: 600,
+        translateY: [15, 0],
+        duration: 500,
       })
-      .add(
-        {
-          targets: "main > div > div:first-child",
-          opacity: [0, 1],
-          translateY: [15, 0],
-          duration: 500,
-        },
-        "-=400",
-      )
       .add(
         {
           targets: "main > div > div:nth-child(2)",

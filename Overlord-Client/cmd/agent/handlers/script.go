@@ -57,6 +57,8 @@ func HandleScriptExecute(ctx context.Context, env *agentRuntime.Env, cmdID strin
 		})
 	}
 
+	hideCmdWindow(cmd)
+
 	timeout := 5 * time.Minute
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

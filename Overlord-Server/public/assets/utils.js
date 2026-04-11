@@ -23,6 +23,7 @@ export function digestData(data, { page, pageSize, searchTerm, sort }) {
       arch: c.arch,
       os: c.os,
       monitors: c.monitors,
+      elevation: c.elevation,
     })) || [];
   return JSON.stringify({
     page,

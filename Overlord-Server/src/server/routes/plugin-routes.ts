@@ -657,6 +657,7 @@ export async function handlePluginRoutes(
       referrerpolicy="no-referrer"
     />
     <link rel="stylesheet" href="/assets/main.css" />
+    <link rel="stylesheet" href="/assets/custom.css" />
   </head>
   <body class="min-h-screen bg-slate-950 text-slate-100">
     <header id="top-nav"></header>

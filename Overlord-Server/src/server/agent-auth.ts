@@ -17,8 +17,13 @@ export function isAuthorizedAgentRequest(
     String(process.env.OVERLORD_DISABLE_AGENT_AUTH || "").toLowerCase() ===
     "true";
   if (disableAuth) {
-    logger.info("[auth] Agent auth explicitly disabled by OVERLORD_DISABLE_AGENT_AUTH=true");
-    return true;
+    const nodeEnv = String(process.env.NODE_ENV || "development").toLowerCase();
+    if (nodeEnv === "production") {
+      logger.warn("[auth] OVERLORD_DISABLE_AGENT_AUTH is ignored in production mode");
+    } else {
+      logger.info("[auth] Agent auth explicitly disabled by OVERLORD_DISABLE_AGENT_AUTH=true (non-production mode)");
+      return true;
+    }
   }
 
   const token = agentToken?.trim();

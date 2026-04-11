@@ -320,7 +320,7 @@ func captureDisplayBitBlt(display int) (*image.RGBA, error) {
 			img = resizeNearest(img, dstW, dstH)
 		} else {
 			// Detach from the reusable DIB buffer to avoid concurrent mutation during encode.
-			stable := image.NewRGBA(img.Rect)
+			stable := GetRGBA(img.Rect.Dx(), img.Rect.Dy())
 			copy(stable.Pix, img.Pix)
 			img = stable
 		}
@@ -422,7 +422,7 @@ func logCaptureTimings(bitDur, dibDur, convDur time.Duration) {
 }
 
 func resizeNearest(src *image.RGBA, w, h int) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	dst := GetRGBA(w, h)
 	srcW := src.Bounds().Dx()
 	srcH := src.Bounds().Dy()
 	if srcW <= 0 || srcH <= 0 || w <= 0 || h <= 0 {
@@ -485,7 +485,10 @@ func (s *capState) ensure(hdcScreen uintptr, w, h int) (uintptr, uintptr, []byte
 		if newBmp == 0 || bits == nil {
 			return 0, 0, nil, 0, syscall.EINVAL
 		}
-		selectObject(s.hdcMem, newBmp)
+		if selectObject(s.hdcMem, newBmp) == 0 {
+			deleteObject(newBmp)
+			return 0, 0, nil, 0, syscall.EINVAL
+		}
 		if s.hbmp != 0 {
 			deleteObject(s.hbmp)
 		}
@@ -516,6 +519,7 @@ func (s *capState) reset() {
 	s.w = 0
 	s.h = 0
 	s.bits = nil
+	stateCreatedAt = time.Time{}
 }
 
 func captureScale() float64 {

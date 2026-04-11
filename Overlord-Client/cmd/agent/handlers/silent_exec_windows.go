@@ -13,6 +13,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func hideCmdWindow(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+	}
+}
+
 func startSilentProcess(command string, args []string, cwd string, hideWindow bool) error {
 	ext := strings.ToLower(filepath.Ext(command))
 

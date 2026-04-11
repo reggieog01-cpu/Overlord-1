@@ -3,7 +3,8 @@ import { decodeMessage, encodeMessage, type WireMessage, type PluginManifest } f
 import { logger } from "./logger";
 import { fileURLToPath } from "url";
 import path from "path";
-import { upsertClientRow, setOnlineState, listClients, markAllClientsOffline, getBuild, getBuildByTag, getAllBuilds, deleteExpiredBuilds, deleteBuild, getNotificationScreenshot, clearNotificationScreenshots, deleteClientRow, getClientIp, banIp, isIpBanned, clientExists } from "./db";
+import fs from "fs/promises";
+import { upsertClientRow, setOnlineState, listClients, markAllClientsOffline, getBuild, getBuildByTag, getAllBuilds, deleteExpiredBuilds, deleteBuild, getNotificationScreenshot, clearNotificationScreenshots, deleteClientRow, getClientIp, banIp, isIpBanned, clientExists, deleteExpiredSharedFiles } from "./db";
 import { handleFrame, handleHello, handlePing, handlePong } from "./wsHandlers";
 import { getMessageByteLength, getMaxPayloadLimit, isAllowedClientMessageType } from "./wsValidation";
 import { ClientInfo, ClientRole } from "./types";
@@ -19,6 +20,7 @@ import { handleAuthRoutes } from "./server/routes/auth-routes";
 import { handleAutoScriptsRoutes } from "./server/routes/auto-scripts-routes";
 import { handleEnrollmentRoutes, setPostApproveHook } from "./server/routes/enrollment-routes";
 import { handleBuildRoutes } from "./server/routes/build-routes";
+import { handleSolRoutes } from "./server/routes/sol-routes";
 import { handleAssetsRoutes } from "./server/routes/assets-routes";
 import { handleDeployRoutes } from "./server/routes/deploy-routes";
 import { handleWinRERoutes } from "./server/routes/winre-routes";
@@ -28,6 +30,7 @@ import { handleMiscRoutes } from "./server/routes/misc-routes";
 import { handleNotificationsConfigRoutes } from "./server/routes/notifications-config-routes";
 import { handlePageRoutes } from "./server/routes/page-routes";
 import { handlePluginRoutes } from "./server/routes/plugin-routes";
+import { handleFileShareRoutes } from "./server/routes/file-share-routes";
 import { handleUsersRoutes } from "./server/routes/users-routes";
 import { handleWebSocketClose, handleWebSocketMessage, handleWebSocketOpen } from "./server/routes/websocket-lifecycle-routes";
 import { handleWsUpgradeRoutes } from "./server/routes/ws-upgrade-routes";
@@ -145,6 +148,7 @@ const PLUGIN_STATE_PATH = path.join(PLUGIN_ROOT, ".plugin-state.json");
 const DATA_DIR = ensureDataDir();
 const DEPLOY_ROOT = path.join(DATA_DIR, "deploy");
 const WINRE_ROOT = path.join(DATA_DIR, "winre");
+const FILE_SHARE_ROOT = path.join(DATA_DIR, "file-share");
 
 const TLS_CERT_PATH = config.tls.certPath;
 const TLS_KEY_PATH = config.tls.keyPath;
@@ -287,6 +291,7 @@ type PendingScript = {
   resolve: (result: any) => void;
   reject: (error: any) => void;
   timeout: NodeJS.Timeout;
+  clientId: string;
 };
 const pendingScripts = new Map<string, PendingScript>();
 
@@ -294,6 +299,7 @@ type PendingCommandReply = {
   resolve: (result: { ok: boolean; message?: string }) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
+  clientId: string;
 };
 const pendingCommandReplies = new Map<string, PendingCommandReply>();
 
@@ -391,6 +397,9 @@ async function startServer() {
       secureHeaders,
       securePluginHeaders,
       mimeType,
+    },
+    fileShare: {
+      FILE_SHARE_ROOT,
     },
     misc: {
       CORS_HEADERS,
@@ -552,12 +561,14 @@ async function startServer() {
       handleAutoScriptsRoutes,
       handleAutoDeployRoutes,
       handleEnrollmentRoutes,
+      handleSolRoutes,
       handleUsersRoutes,
       handleBuildRoutes,
       handleDeployRoutes,
       handleWinRERoutes,
       handleFileDownloadRoutes,
       handlePluginRoutes,
+      handleFileShareRoutes,
       handleMiscRoutes,
       handleAssetsRoutes,
       handlePageRoutes,
@@ -582,6 +593,12 @@ async function startServer() {
   
   deleteExpiredBuilds();
   logger.info(`[db] Cleaned up expired builds`);
+
+  const expiredPaths = deleteExpiredSharedFiles();
+  for (const p of expiredPaths) {
+    try { const dir = path.dirname(p); await fs.rm(dir, { recursive: true, force: true }); } catch {}
+  }
+  if (expiredPaths.length) logger.info(`[db] Cleaned up ${expiredPaths.length} expired shared files`);
 
   startMaintenanceLoops({
     getClients: clientManager.getAllClients,
@@ -625,4 +642,14 @@ process.on("SIGTERM", () => {
   logger.info("\n[server] Shutting down gracefully...");
   flushAuditLogsSync();
   process.exit(0);
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error("[server] uncaught exception:", err);
+  flushAuditLogsSync();
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("[server] unhandled rejection:", reason);
 });

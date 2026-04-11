@@ -14,6 +14,7 @@ import (
 )
 
 type Env struct {
+	LastPongUnixMs     int64
 	Conn               wire.Writer
 	Cfg                config.Config
 	Cancel             context.CancelFunc
@@ -53,7 +54,6 @@ type Env struct {
 	NotificationKeywords      []string
 	NotificationMinIntervalMs int
 	NotificationClipboard     bool
-	LastPongUnixMs            int64
 }
 
 func (e *Env) SetNotificationConfig(keywords []string, minIntervalMs int, clipboardEnabled bool) {

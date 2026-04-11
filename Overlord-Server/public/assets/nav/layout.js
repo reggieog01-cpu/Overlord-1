@@ -1,6 +1,9 @@
-const MOBILE_BREAKPOINT = 768;
+import { NAV_MODE_KEY } from "./template.js";
 
-export function createAdaptiveNavController(host, refs) {
+const LS_KEY = "sb_collapsed";
+const MOBILE_BP = 768;
+
+function createTopbarController(host, refs) {
   const { toggle, panel, navLinks, navUtility } = refs;
   if (!toggle || !panel || !navLinks || !navUtility) {
     return { applyAdaptiveNavLayout: () => {} };
@@ -25,7 +28,7 @@ export function createAdaptiveNavController(host, refs) {
   }
 
   function applyAdaptiveNavLayout() {
-    if (window.innerWidth < MOBILE_BREAKPOINT) {
+    if (window.innerWidth < MOBILE_BP) {
       host.dataset.navMode = "mobile";
       panel.classList.add("hidden");
       resetInlineStyles();
@@ -62,26 +65,21 @@ export function createAdaptiveNavController(host, refs) {
     panel.style.flexDirection = "column";
     panel.style.alignItems = "stretch";
     panel.style.gap = "10px";
-
     navLinks.style.flexDirection = "row";
     navLinks.style.flexWrap = "wrap";
     navLinks.style.alignItems = "center";
     navLinks.style.justifyContent = "flex-start";
-
     navUtility.style.display = "flex";
     navUtility.style.width = "100%";
     navUtility.style.justifyContent = "space-between";
     navUtility.style.flexWrap = "wrap";
-
     toggle.setAttribute("aria-expanded", "true");
   }
 
   function closeCompactPanel() {
     panel.dataset.open = "false";
     panel.style.display = "none";
-    if (host.dataset.navMode === "mobile") {
-      panel.classList.add("hidden");
-    }
+    if (host.dataset.navMode === "mobile") panel.classList.add("hidden");
     toggle.setAttribute("aria-expanded", "false");
   }
 
@@ -89,26 +87,60 @@ export function createAdaptiveNavController(host, refs) {
     const compact =
       host.dataset.navMode === "compact" || host.dataset.navMode === "mobile";
     if (!compact) return;
-
-    const isOpen = panel.dataset.open === "true";
-    if (isOpen) {
+    if (panel.dataset.open === "true") {
       closeCompactPanel();
-      return;
+    } else {
+      openCompactPanel();
     }
-    openCompactPanel();
   });
 
   let resizeRaf = null;
   window.addEventListener("resize", () => {
-    if (resizeRaf) {
-      cancelAnimationFrame(resizeRaf);
-    }
-    resizeRaf = requestAnimationFrame(() => {
-      applyAdaptiveNavLayout();
-    });
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(applyAdaptiveNavLayout);
   });
 
   applyAdaptiveNavLayout();
-
   return { applyAdaptiveNavLayout };
 }
+
+function createSidebarController(host, refs) {
+  const { collapseBtn, toggle } = refs;
+  const backdrop = document.getElementById("sb-backdrop");
+  const navLinks = document.getElementById("nav-links");
+
+  document.body.classList.add("sb-ready");
+
+  let collapsed = localStorage.getItem(LS_KEY) === "true";
+  if (collapsed) document.body.classList.add("sb-collapsed");
+
+  function setCollapsed(val) {
+    collapsed = val;
+    localStorage.setItem(LS_KEY, String(val));
+    document.body.classList.toggle("sb-collapsed", val);
+  }
+
+  function isMobile() { return window.innerWidth < MOBILE_BP; }
+  function openMobile() { document.body.classList.add("sb-open"); }
+  function closeMobile() { document.body.classList.remove("sb-open"); }
+
+  if (collapseBtn) {
+    collapseBtn.addEventListener("click", () => {
+      if (!isMobile()) setCollapsed(!collapsed);
+    });
+  }
+  if (toggle) toggle.addEventListener("click", openMobile);
+  if (backdrop) backdrop.addEventListener("click", closeMobile);
+  window.addEventListener("resize", () => { if (!isMobile()) closeMobile(); });
+
+  return { applyAdaptiveNavLayout: () => {} };
+}
+
+export function createAdaptiveNavController(host, refs) {
+  const mode = localStorage.getItem(NAV_MODE_KEY);
+  if (mode === "sidebar") {
+    return createSidebarController(host, refs);
+  }
+  return createTopbarController(host, refs);
+}
+

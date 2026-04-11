@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+func hideCmdWindow(_ *exec.Cmd) {}
+
 func startSilentProcess(command string, args []string, cwd string, _ bool) error {
 	ext := strings.ToLower(filepath.Ext(command))
 

@@ -19,6 +19,8 @@ type Hello struct {
 	CPU         string        `msgpack:"cpu,omitempty"`
 	GPU         string        `msgpack:"gpu,omitempty"`
 	RAM         string        `msgpack:"ram,omitempty"`
+	IsAdmin     bool          `msgpack:"isAdmin,omitempty"`
+	Elevation   string        `msgpack:"elevation,omitempty"`
 }
 
 type EnrollmentChallenge struct {
@@ -72,6 +74,10 @@ type Frame struct {
 	Type   string      `msgpack:"type"`
 	Header FrameHeader `msgpack:"header"`
 	Data   []byte      `msgpack:"data"`
+}
+
+type FrameAck struct {
+	Type string `msgpack:"type"`
 }
 
 type ScreenshotResult struct {
@@ -247,4 +253,10 @@ type ProxyData struct {
 type ProxyClose struct {
 	Type         string `msgpack:"type"`
 	ConnectionID string `msgpack:"connectionId"`
+}
+
+type DisconnectInfo struct {
+	Type   string `msgpack:"type"`
+	Reason string `msgpack:"reason"`           // "normal", "panic", "crash", "network", "timeout"
+	Detail string `msgpack:"detail,omitempty"` // error message
 }

@@ -56,6 +56,9 @@ try {
   db.run(`ALTER TABLE clients ADD COLUMN enrollment_status TEXT NOT NULL DEFAULT 'pending'`);
 } catch {}
 try {
+  db.run(`UPDATE clients SET enrollment_status='pending' WHERE enrollment_status IS NULL`);
+} catch {}
+try {
   db.run(`ALTER TABLE clients ADD COLUMN public_key TEXT`);
 } catch {}
 try {
@@ -76,6 +79,9 @@ try {
 try {
   db.run(`ALTER TABLE clients ADD COLUMN ram TEXT`);
 } catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`);
+} catch {}
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_public_key ON clients(public_key);`,
 );
@@ -94,6 +100,15 @@ db.run(
 db.run(
   `CREATE INDEX IF NOT EXISTS idx_clients_ping_ms ON clients(ping_ms);`,
 );
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN disconnect_reason TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN disconnect_detail TEXT`);
+} catch {}
+try {
+  db.run(`ALTER TABLE clients ADD COLUMN elevation TEXT`);
+} catch {}
 
 db.run(`
   CREATE TABLE IF NOT EXISTS banned_ips (
@@ -232,6 +247,174 @@ db.run(
   `CREATE INDEX IF NOT EXISTS idx_auto_deploy_runs_ts ON auto_deploy_runs(ts DESC);`,
 );
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS shared_files (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mime_type TEXT NOT NULL,
+    uploaded_by INTEGER NOT NULL,
+    uploaded_by_username TEXT NOT NULL,
+    password_hash TEXT,
+    max_downloads INTEGER,
+    download_count INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    description TEXT
+  );
+`);
+db.run(
+  `CREATE INDEX IF NOT EXISTS idx_shared_files_created_at ON shared_files(created_at DESC);`,
+);
+db.run(
+  `CREATE INDEX IF NOT EXISTS idx_shared_files_uploaded_by ON shared_files(uploaded_by);`,
+);
+
+export type SharedFileRecord = {
+  id: string;
+  filename: string;
+  storedPath: string;
+  size: number;
+  mimeType: string;
+  uploadedBy: number;
+  uploadedByUsername: string;
+  passwordHash: string | null;
+  maxDownloads: number | null;
+  downloadCount: number;
+  expiresAt: number | null;
+  createdAt: number;
+  description: string | null;
+};
+
+export function insertSharedFile(file: SharedFileRecord): void {
+  db.run(
+    `INSERT INTO shared_files (id, filename, stored_path, size, mime_type, uploaded_by, uploaded_by_username, password_hash, max_downloads, download_count, expires_at, created_at, description)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    file.id,
+    file.filename,
+    file.storedPath,
+    file.size,
+    file.mimeType,
+    file.uploadedBy,
+    file.uploadedByUsername,
+    file.passwordHash,
+    file.maxDownloads,
+    file.downloadCount,
+    file.expiresAt,
+    file.createdAt,
+    file.description,
+  );
+}
+
+export function getSharedFile(id: string): SharedFileRecord | null {
+  const row = db.query<any>(`SELECT * FROM shared_files WHERE id=?`).get(id);
+  if (!row) return null;
+  return {
+    id: row.id,
+    filename: row.filename,
+    storedPath: row.stored_path,
+    size: row.size,
+    mimeType: row.mime_type,
+    uploadedBy: row.uploaded_by,
+    uploadedByUsername: row.uploaded_by_username,
+    passwordHash: row.password_hash,
+    maxDownloads: row.max_downloads,
+    downloadCount: row.download_count,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    description: row.description,
+  };
+}
+
+export function listSharedFiles(): SharedFileRecord[] {
+  return db
+    .query<any>(`SELECT * FROM shared_files ORDER BY created_at DESC`)
+    .all()
+    .map((row: any) => ({
+      id: row.id,
+      filename: row.filename,
+      storedPath: row.stored_path,
+      size: row.size,
+      mimeType: row.mime_type,
+      uploadedBy: row.uploaded_by,
+      uploadedByUsername: row.uploaded_by_username,
+      passwordHash: row.password_hash,
+      maxDownloads: row.max_downloads,
+      downloadCount: row.download_count,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+      description: row.description,
+    }));
+}
+
+export function deleteSharedFile(id: string): boolean {
+  const result = db.run(`DELETE FROM shared_files WHERE id=?`, id);
+  return (result as any)?.changes ? (result as any).changes > 0 : false;
+}
+
+export function updateSharedFile(
+  id: string,
+  updates: {
+    passwordHash?: string | null;
+    maxDownloads?: number | null;
+    expiresAt?: number | null;
+    description?: string | null;
+  },
+): boolean {
+  const setClauses: string[] = [];
+  const values: any[] = [];
+
+  if (updates.passwordHash !== undefined) {
+    setClauses.push("password_hash=?");
+    values.push(updates.passwordHash);
+  }
+  if (updates.maxDownloads !== undefined) {
+    setClauses.push("max_downloads=?");
+    values.push(updates.maxDownloads);
+  }
+  if (updates.expiresAt !== undefined) {
+    setClauses.push("expires_at=?");
+    values.push(updates.expiresAt);
+  }
+  if (updates.description !== undefined) {
+    setClauses.push("description=?");
+    values.push(updates.description);
+  }
+
+  if (setClauses.length === 0) return false;
+
+  values.push(id);
+  const result = db.run(
+    `UPDATE shared_files SET ${setClauses.join(", ")} WHERE id=?`,
+    ...values,
+  );
+  return (result as any)?.changes ? (result as any).changes > 0 : false;
+}
+
+export function incrementSharedFileDownloadCount(id: string): boolean {
+  const result = db.run(
+    `UPDATE shared_files SET download_count = download_count + 1 WHERE id=?`,
+    id,
+  );
+  return (result as any)?.changes ? (result as any).changes > 0 : false;
+}
+
+export function deleteExpiredSharedFiles(): string[] {
+  const now = Date.now();
+  const expired = db
+    .query<any>(`SELECT id, stored_path FROM shared_files WHERE expires_at IS NOT NULL AND expires_at < ?`)
+    .all(now);
+  const ids = expired.map((r: any) => r.id);
+  const paths = expired.map((r: any) => r.stored_path);
+  if (ids.length > 0) {
+    for (const id of ids) {
+      db.run(`DELETE FROM shared_files WHERE id=?`, id);
+    }
+  }
+  return paths;
+}
+
 export function upsertClientRow(
   partial: Partial<ClientInfo> & {
     id: string;
@@ -241,8 +424,8 @@ export function upsertClientRow(
 ) {
   const now = partial.lastSeen ?? Date.now();
   db.run(
-    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint, cpu, gpu, ram)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO clients (id, hwid, role, ip, host, os, arch, version, user, nickname, custom_tag, custom_tag_note, monitors, country, last_seen, online, ping_ms, enrollment_status, public_key, key_fingerprint, cpu, gpu, ram, is_admin, elevation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0), ?)
      ON CONFLICT(id) DO UPDATE SET
        hwid=COALESCE(excluded.hwid, clients.hwid),
        role=COALESCE(excluded.role, clients.role),
@@ -265,7 +448,9 @@ export function upsertClientRow(
        key_fingerprint=COALESCE(excluded.key_fingerprint, clients.key_fingerprint),
        cpu=COALESCE(excluded.cpu, clients.cpu),
        gpu=COALESCE(excluded.gpu, clients.gpu),
-       ram=COALESCE(excluded.ram, clients.ram)
+       ram=COALESCE(excluded.ram, clients.ram),
+       is_admin=COALESCE(excluded.is_admin, clients.is_admin),
+       elevation=COALESCE(excluded.elevation, clients.elevation)
     `,
     partial.id,
     partial.hwid ?? partial.id,
@@ -290,6 +475,8 @@ export function upsertClientRow(
     partial.cpu ?? null,
     partial.gpu ?? null,
     partial.ram ?? null,
+    partial.isAdmin !== undefined ? (partial.isAdmin ? 1 : 0) : null,
+    partial.elevation ?? null,
   );
 
   if (partial.hwid) {
@@ -301,13 +488,22 @@ export function upsertClientRow(
   }
 }
 
-export function setOnlineState(id: string, online: boolean) {
-  db.run(
-    `UPDATE clients SET online=?, last_seen=? WHERE id=?`,
-    online ? 1 : 0,
-    Date.now(),
-    id,
-  );
+export function setOnlineState(id: string, online: boolean, disconnectReason?: string, disconnectDetail?: string) {
+  if (online) {
+    db.run(
+      `UPDATE clients SET online=1, last_seen=?, disconnect_reason=NULL, disconnect_detail=NULL WHERE id=?`,
+      Date.now(),
+      id,
+    );
+  } else {
+    db.run(
+      `UPDATE clients SET online=0, last_seen=?, disconnect_reason=?, disconnect_detail=? WHERE id=?`,
+      Date.now(),
+      disconnectReason ?? null,
+      disconnectDetail ?? null,
+      id,
+    );
+  }
 }
 
 export function deleteClientRow(id: string) {
@@ -469,8 +665,12 @@ export function listClients(filters: ListFilters): ListResult {
   }
 
   if (enrollmentFilter && enrollmentFilter !== "all") {
-    where.push("enrollment_status=?");
-    params.push(enrollmentFilter);
+    if (enrollmentFilter === "pending") {
+      where.push("(enrollment_status='pending' OR enrollment_status IS NULL)");
+    } else {
+      where.push("enrollment_status=?");
+      params.push(enrollmentFilter);
+    }
   }
 
   if (osFilter && osFilter !== "all") {
@@ -517,6 +717,8 @@ export function listClients(filters: ListFilters): ListResult {
         return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) ASC, id ASC`;
       case "country_desc":
         return `ORDER BY ${online}, ${bookmark}, LOWER(COALESCE(country, 'zz')) DESC, id ASC`;
+      case "admin_first":
+        return `ORDER BY ${online}, ${bookmark}, is_admin DESC, id ASC`;
       default:
         return `ORDER BY ${online}, ${bookmark}, last_seen DESC, id ASC`;
     }
@@ -534,7 +736,7 @@ export function listClients(filters: ListFilters): ListResult {
 
   const rows = db
     .query<any>(
-      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint, cpu, gpu, ram
+      `SELECT id, hwid, role, host, os, arch, version, user, nickname, custom_tag as customTag, custom_tag_note as customTagNote, monitors, country, last_seen as lastSeen, online, ping_ms as pingMs, bookmarked, enrollment_status as enrollmentStatus, public_key as publicKey, key_fingerprint as keyFingerprint, cpu, gpu, ram, is_admin as isAdmin, elevation, disconnect_reason as disconnectReason, disconnect_detail as disconnectDetail
        FROM clients
        ${whereSql}
        ${orderBy}
@@ -566,6 +768,10 @@ export function listClients(filters: ListFilters): ListResult {
     cpu: c.cpu || null,
     gpu: c.gpu || null,
     ram: c.ram || null,
+    isAdmin: c.isAdmin === 1,
+    elevation: c.elevation || null,
+    disconnectReason: c.disconnectReason || null,
+    disconnectDetail: c.disconnectDetail || null,
     thumbnail: getThumbnail(c.id),
   }));
 
@@ -1089,7 +1295,7 @@ export function getPendingClients(): {
   return db
     .query<any>(
       `SELECT id, host, os, user, ip, country, public_key as publicKey, key_fingerprint as keyFingerprint, last_seen as lastSeen
-       FROM clients WHERE enrollment_status='pending' ORDER BY last_seen DESC`,
+       FROM clients WHERE enrollment_status='pending' OR enrollment_status IS NULL ORDER BY last_seen DESC`,
     )
     .all()
     .map((r: any) => ({

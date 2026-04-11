@@ -140,7 +140,9 @@ const FILE_UPLOAD_PULL_TTL_MS = parsePositiveIntEnv(
 
 function isSafeRemotePath(value: string): boolean {
   if (!value || value.length > 4096) return false;
-  return !/[\x00-\x1F\x7F]/.test(value);
+  if (/[\x00-\x1F\x7F]/.test(value)) return false;
+  if (/(\.\.([\/\\]|$))/.test(value)) return false;
+  return true;
 }
 
 async function serveDownloadById(

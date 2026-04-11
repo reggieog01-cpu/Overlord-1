@@ -23,6 +23,7 @@ export interface User {
   must_change_password: number;
   client_scope: ClientAccessScope;
   can_build: number;
+  can_upload_files: number;
   telegram_chat_id: string | null;
 }
 
@@ -35,6 +36,7 @@ export interface UserInfo {
   created_by: string | null;
   client_scope: ClientAccessScope;
   can_build: number;
+  can_upload_files: number;
   telegram_chat_id: string | null;
 }
 
@@ -157,6 +159,23 @@ for (const col of notificationColumns) {
   }
 }
 
+try {
+  db.exec(
+    `ALTER TABLE users ADD COLUMN can_upload_files INTEGER NOT NULL DEFAULT 0`,
+  );
+  logger.info("[users] Added can_upload_files column to existing database");
+
+  try {
+    db.exec(`UPDATE users SET can_upload_files=1 WHERE role='admin'`);
+  } catch (err: any) {
+    logger.error("[users] Failed to backfill admin can_upload_files:", err);
+  }
+} catch (err: any) {
+  if (!err.message?.includes("duplicate column name")) {
+    logger.error("[users] Migration error:", err);
+  }
+}
+
 const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as {
   count: number;
 };
@@ -172,8 +191,8 @@ if (userCount.count === 0) {
   });
 
   db.prepare(
-    "INSERT INTO users (username, password_hash, role, created_at, created_by, must_change_password, client_scope, can_build) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-  ).run(initialUsername, defaultPassword, "admin", Date.now(), "system", 1, "all", 1);
+    "INSERT INTO users (username, password_hash, role, created_at, created_by, must_change_password, client_scope, can_build, can_upload_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(initialUsername, defaultPassword, "admin", Date.now(), "system", 1, "all", 1, 1);
 
   const createdUser = db
     .prepare("SELECT * FROM users WHERE username = ?")
@@ -209,7 +228,7 @@ export function getUserByUsername(username: string): User | null {
 export function listUsers(): UserInfo[] {
   const users = db
     .prepare(
-      "SELECT id, username, role, created_at, last_login, created_by, client_scope, can_build, telegram_chat_id FROM users ORDER BY created_at DESC",
+      "SELECT id, username, role, created_at, last_login, created_by, client_scope, can_build, can_upload_files, telegram_chat_id FROM users ORDER BY created_at DESC",
     )
     .all() as UserInfo[];
   return users;
@@ -425,9 +444,9 @@ export async function createUser(
 
     const result = db
       .prepare(
-        "INSERT INTO users (username, password_hash, role, created_at, created_by, client_scope, can_build) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (username, password_hash, role, created_at, created_by, client_scope, can_build, can_upload_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(username, passwordHash, role, Date.now(), createdBy, role === "admin" ? "all" : "none", role === "admin" || role === "operator" ? 1 : 0);
+      .run(username, passwordHash, role, Date.now(), createdBy, role === "admin" ? "all" : "none", role === "admin" || role === "operator" ? 1 : 0, role === "admin" ? 1 : 0);
 
     invalidateNotificationDeliveryCache();
 
@@ -581,6 +600,25 @@ export function setUserCanBuild(
   } catch (err: any) {
     logger.error("[users] setUserCanBuild error:", err);
     return { success: false, error: err.message || "Failed to update build permission" };
+  }
+}
+
+export function canUploadFiles(userId: number, role: UserRole): boolean {
+  if (role === "admin") return true;
+  const user = getUserById(userId);
+  return user ? user.can_upload_files === 1 : false;
+}
+
+export function setUserCanUploadFiles(
+  userId: number,
+  canUpload: boolean,
+): { success: boolean; error?: string } {
+  try {
+    db.prepare("UPDATE users SET can_upload_files = ? WHERE id = ?").run(canUpload ? 1 : 0, userId);
+    return { success: true };
+  } catch (err: any) {
+    logger.error("[users] setUserCanUploadFiles error:", err);
+    return { success: false, error: err.message || "Failed to update upload permission" };
   }
 }
 

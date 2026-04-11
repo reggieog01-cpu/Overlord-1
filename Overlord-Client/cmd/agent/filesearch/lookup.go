@@ -1,8 +1,10 @@
 package filesearch
 
 import (
+	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 )
@@ -31,6 +33,11 @@ func LookupExe(exeName string, workers int, onResult ResultFunc) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[filesearch] worker panic: %v\n%s", r, debug.Stack())
+				}
+			}()
 			for dir := range dirs {
 				walkDir(dir, lowerExe, dirs, &inflight, onResult)
 				inflight.Done()

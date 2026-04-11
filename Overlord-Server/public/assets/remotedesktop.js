@@ -296,6 +296,10 @@ import { encodeMsgpack, decodeMsgpack } from "./msgpack-helpers.js";
           });
         }
         sendCmd("desktop_start", {});
+        pushInputToggles();
+        pushCaptureToggles();
+        if (qualitySlider) pushQuality(qualitySlider.value);
+        pushResolution();
       } else {
         setStreamState("idle", "Stopped");
       }

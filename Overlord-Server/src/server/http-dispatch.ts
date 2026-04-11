@@ -27,6 +27,7 @@ type HttpDispatchDeps<
   TWinRE,
   TFileDownload,
   TPlugin,
+  TFileShare,
   TMisc,
   TAssets,
   TPage,
@@ -40,12 +41,14 @@ type HttpDispatchDeps<
   handleAutoScriptsRoutes: RouteHandler;
   handleAutoDeployRoutes: RouteHandlerWithDeps<TAutoDeploy>;
   handleEnrollmentRoutes: RouteHandler;
+  handleSolRoutes: RouteHandler;
   handleUsersRoutes: RouteHandlerWithServer<TServer>;
   handleBuildRoutes: RouteHandlerWithServerDeps<TServer, TBuild>;
   handleDeployRoutes: RouteHandlerWithServerDeps<TServer, TDeploy>;
   handleWinRERoutes: RouteHandlerWithServerDeps<TServer, TWinRE>;
   handleFileDownloadRoutes: RouteHandlerWithServerDeps<TServer, TFileDownload>;
   handlePluginRoutes: RouteHandlerWithDeps<TPlugin>;
+  handleFileShareRoutes: RouteHandlerWithDeps<TFileShare>;
   handleMiscRoutes: RouteHandlerWithDeps<TMisc>;
   handleAssetsRoutes: RouteHandlerWithDeps<TAssets>;
   handlePageRoutes: RouteHandlerWithDeps<TPage>;
@@ -59,6 +62,7 @@ type HttpDispatchDeps<
     winre: TWinRE;
     fileDownload: TFileDownload;
     plugin: TPlugin;
+    fileShare: TFileShare;
     misc: TMisc;
     assets: TAssets;
     page: TPage;
@@ -76,6 +80,7 @@ export function createHttpFetchHandler<
   TWinRE,
   TFileDownload,
   TPlugin,
+  TFileShare,
   TMisc,
   TAssets,
   TPage,
@@ -91,6 +96,7 @@ export function createHttpFetchHandler<
     TWinRE,
     TFileDownload,
     TPlugin,
+    TFileShare,
     TMisc,
     TAssets,
     TPage,
@@ -122,6 +128,9 @@ export function createHttpFetchHandler<
       const enrollmentResponse = await deps.handleEnrollmentRoutes(req, url);
       if (enrollmentResponse) return enrollmentResponse;
 
+      const solResponse = await deps.handleSolRoutes(req, url);
+      if (solResponse) return solResponse;
+
       const usersResponse = await deps.handleUsersRoutes(req, url, routeServer);
       if (usersResponse) return usersResponse;
 
@@ -139,6 +148,9 @@ export function createHttpFetchHandler<
 
       const pluginResponse = await deps.handlePluginRoutes(req, url, deps.routeDeps.plugin);
       if (pluginResponse) return pluginResponse;
+
+      const fileShareResponse = await deps.handleFileShareRoutes(req, url, deps.routeDeps.fileShare);
+      if (fileShareResponse) return fileShareResponse;
 
       const miscResponse = await deps.handleMiscRoutes(req, url, deps.routeDeps.misc);
       if (miscResponse) return miscResponse;

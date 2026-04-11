@@ -45,8 +45,14 @@ func TestHandlePing(t *testing.T) {
 		t.Fatalf("HandlePing failed: %v", err)
 	}
 
-	if len(writer.msgs) < 1 {
-		t.Fatal("Expected at least 1 message")
+	deadline := time.After(2 * time.Second)
+	for len(writer.msgs) < 1 {
+		select {
+		case <-deadline:
+			t.Fatal("Timed out waiting for pong message")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 
 	var pong wire.Pong

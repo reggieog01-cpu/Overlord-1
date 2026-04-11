@@ -15,6 +15,7 @@ import {
   setUserClientAccessRule,
   setUserClientAccessScope,
   setUserCanBuild,
+  setUserCanUploadFiles,
   updateUserPassword,
   updateUserRole,
 } from "../../users";
@@ -351,6 +352,34 @@ export async function handleUsersRoutes(
       });
 
       return Response.json({ success: true, canBuild });
+    }
+
+    if (req.method === "PUT" && url.pathname.match(/^\/api\/users\/\d+\/can-upload-files$/)) {
+      const authedUser = requirePermission(user, "users:manage");
+      const userId = parseInt(url.pathname.split("/")[3]);
+      const targetUser = getUserById(userId);
+      if (!targetUser) {
+        return Response.json({ error: "User not found" }, { status: 404 });
+      }
+
+      const body = await req.json();
+      const canUploadFiles = !!body?.canUploadFiles;
+      const result = setUserCanUploadFiles(userId, canUploadFiles);
+      if (!result.success) {
+        return Response.json({ error: result.error }, { status: 400 });
+      }
+
+      const ip = server.requestIP(req)?.address || "unknown";
+      logAudit({
+        timestamp: Date.now(),
+        username: authedUser.username,
+        ip,
+        action: AuditAction.COMMAND,
+        details: `${canUploadFiles ? "Granted" : "Revoked"} file upload permission for ${targetUser.username}`,
+        success: true,
+      });
+
+      return Response.json({ success: true, canUploadFiles });
     }
 
     return new Response("Not found", { status: 404 });

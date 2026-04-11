@@ -159,6 +159,11 @@ function renderUsers() {
             title="${user.can_build ? 'Can build (click to revoke)' : 'Cannot build (click to grant)'}">
             <i class="fa-solid fa-hammer mr-1"></i>${user.can_build ? 'Build' : 'No Build'}
           </span>
+          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${user.can_upload_files ? 'bg-teal-900/30 text-teal-300 border border-teal-800 hover:bg-teal-900/50' : 'bg-slate-700/30 text-slate-500 border border-slate-700 hover:bg-slate-700/50'}" 
+            data-action="toggle-upload" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" data-can-upload="${user.can_upload_files ? 1 : 0}"
+            title="${user.can_upload_files ? 'Can upload files (click to revoke)' : 'Cannot upload files (click to grant)'}">
+            <i class="fa-solid fa-cloud-arrow-up mr-1"></i>${user.can_upload_files ? 'Upload' : 'No Upload'}
+          </span>
         ` : ''}
       </td>
       <td class="px-6 py-4 text-sm text-slate-400">
@@ -251,6 +256,15 @@ function attachActionListeners() {
       const username = toggleBuild.dataset.username;
       const canBuild = toggleBuild.dataset.canBuild === "1";
       toggleBuildPermission(userId, username, canBuild);
+      return;
+    }
+
+    const toggleUpload = e.target.closest("[data-action='toggle-upload']");
+    if (toggleUpload) {
+      const userId = parseInt(toggleUpload.dataset.userId);
+      const username = toggleUpload.dataset.username;
+      const canUpload = toggleUpload.dataset.canUpload === "1";
+      toggleUploadPermission(userId, username, canUpload);
       return;
     }
 
@@ -469,6 +483,30 @@ window.toggleBuildPermission = async function (userId, username, currentCanBuild
     }
   } catch (err) {
     console.error("Toggle build permission error:", err);
+    alert("Network error. Please try again.");
+  }
+};
+
+window.toggleUploadPermission = async function (userId, username, currentCanUpload) {
+  const newVal = !currentCanUpload;
+  if (!confirm(`${newVal ? 'Grant' : 'Revoke'} file upload permission for ${username}?`)) return;
+
+  try {
+    const res = await fetch(`/api/users/${userId}/can-upload-files`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ canUploadFiles: newVal }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      await loadUsers();
+    } else {
+      alert(data.error || "Failed to update upload permission");
+    }
+  } catch (err) {
+    console.error("Toggle upload permission error:", err);
     alert("Network error. Please try again.");
   }
 };

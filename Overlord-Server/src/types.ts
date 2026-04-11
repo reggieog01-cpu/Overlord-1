@@ -28,9 +28,13 @@ export type ClientInfo = {
   cpu?: string;
   gpu?: string;
   ram?: string;
+  isAdmin?: boolean;
+  elevation?: string;
   enrollmentStatus?: EnrollmentStatus;
   publicKey?: string;
   keyFingerprint?: string;
+  disconnectReason?: string;
+  disconnectDetail?: string;
 };
 
 export type ListFilters = {

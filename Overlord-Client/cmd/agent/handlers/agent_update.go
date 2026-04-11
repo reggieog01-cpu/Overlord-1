@@ -40,6 +40,7 @@ func HandleAgentUpdate(ctx context.Context, env *agentRuntime.Env, cmdID string,
 	}
 
 	go func() {
+		defer recoverAndLog("agent update", nil)
 		// Let the command_result flush before beginning process replacement.
 		time.Sleep(250 * time.Millisecond)
 		if err := runAgentUpdate(sourceAbs, env.Cfg.EnablePersistence, hideWindow); err != nil {

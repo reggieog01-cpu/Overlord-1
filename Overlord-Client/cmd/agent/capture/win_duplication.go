@@ -24,6 +24,8 @@ const (
 	dxgiErrorNotFound            uintptr = 0x887A0002
 	dxgiErrorWaitTimeout         uintptr = 0x887A0027
 	dxgiErrorAccessLost          uintptr = 0x887A0026
+	dxgiErrorDeviceRemoved       uintptr = 0x887A0005
+	dxgiErrorDeviceReset         uintptr = 0x887A0007
 	S_OK                         uintptr = 0
 )
 
@@ -613,6 +615,7 @@ type duplicationState struct {
 	lastFrameAt   time.Time
 	lastFail      time.Time
 	cursorScratch *image.RGBA
+	createdAt     time.Time
 }
 
 func SetDesktopDuplication(enabled bool) {
@@ -675,6 +678,7 @@ func (s *duplicationState) closeLocked() {
 	s.lastFrame = nil
 	s.lastFrameAt = time.Time{}
 	s.cursorScratch = nil
+	s.createdAt = time.Time{}
 }
 
 func (s *duplicationState) capture(display int) (*image.RGBA, error) {
@@ -713,11 +717,15 @@ func (s *duplicationState) capture(display int) (*image.RGBA, error) {
 		s.closeLocked()
 		return nil, errors.New("dxgi: access lost")
 	}
+	if hr == dxgiErrorDeviceRemoved || hr == dxgiErrorDeviceReset {
+		s.closeLocked()
+		return nil, fmt.Errorf("dxgi: device lost 0x%x", hr)
+	}
 	if hr != S_OK {
 		return nil, fmt.Errorf("dxgi: acquire frame failed 0x%x", hr)
 	}
 	if resource != nil {
-		resource.Release()
+		defer resource.Release()
 	}
 
 	width := int(s.desc.ModeDesc.Width)
@@ -820,16 +828,23 @@ func cloneRGBA(src *image.RGBA) *image.RGBA {
 	if src == nil {
 		return nil
 	}
-	dst := image.NewRGBA(src.Rect)
+	dst := GetRGBA(src.Rect.Dx(), src.Rect.Dy())
 	copy(dst.Pix, src.Pix)
 	return dst
 }
 
 func (s *duplicationState) ensure(display int) error {
+	const dxgiDeviceMaxAge = 4 * time.Hour
 	if s.dup != nil && s.display == display {
-		return nil
+		if !s.createdAt.IsZero() && time.Since(s.createdAt) > dxgiDeviceMaxAge {
+			log.Printf("capture: dxgi device age exceeded %v; forcing re-init", dxgiDeviceMaxAge)
+			s.closeLocked()
+		} else {
+			return nil
+		}
+	} else {
+		s.closeLocked()
 	}
-	s.closeLocked()
 
 	monitors := monitorList()
 	if display < 0 || display >= len(monitors) {
@@ -903,6 +918,7 @@ func (s *duplicationState) ensure(display int) error {
 	s.display = display
 	s.bounds = bounds
 	s.cursorBounds = cursorBounds
+	s.createdAt = time.Now()
 
 	return nil
 }
@@ -951,10 +967,13 @@ func (s *duplicationState) readbackFrame(width, height int, rotation uint32, res
 	s.context.CopyResource(s.staging, tex)
 	var mapped d3d11MappedSubresource
 	hr = s.context.Map(s.staging, 0, d3d11MapRead, 0, &mapped)
-	if hr != S_OK || mapped.Data == nil || mapped.RowPitch == 0 {
+	if hr != S_OK {
 		return nil, hr
 	}
 	defer s.context.Unmap(s.staging, 0)
+	if mapped.Data == nil || mapped.RowPitch == 0 {
+		return nil, uintptr(1)
+	}
 
 	pitch := int(mapped.RowPitch)
 	src := unsafe.Slice((*byte)(mapped.Data), pitch*int(srcDesc.Height))
@@ -1077,7 +1096,7 @@ func createD3DDevice(adapter *idxgiAdapter1) (*d3d11Device, *d3d11DeviceContext,
 func convertBGRA(src []byte, pitch, width, height int, rotation uint32) *image.RGBA {
 	switch rotation {
 	case dxgiModeRotationRotate90:
-		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		dst := GetRGBA(height, width)
 		for y := 0; y < height; y++ {
 			sRow := src[y*pitch : y*pitch+width*4]
 			for x := 0; x < width; x++ {
@@ -1093,7 +1112,7 @@ func convertBGRA(src []byte, pitch, width, height int, rotation uint32) *image.R
 		}
 		return dst
 	case dxgiModeRotationRotate180:
-		dst := image.NewRGBA(image.Rect(0, 0, width, height))
+		dst := GetRGBA(width, height)
 		for y := 0; y < height; y++ {
 			sRow := src[y*pitch : y*pitch+width*4]
 			dy := height - 1 - y
@@ -1110,7 +1129,7 @@ func convertBGRA(src []byte, pitch, width, height int, rotation uint32) *image.R
 		}
 		return dst
 	case dxgiModeRotationRotate270:
-		dst := image.NewRGBA(image.Rect(0, 0, height, width))
+		dst := GetRGBA(height, width)
 		for y := 0; y < height; y++ {
 			sRow := src[y*pitch : y*pitch+width*4]
 			for x := 0; x < width; x++ {
@@ -1126,7 +1145,7 @@ func convertBGRA(src []byte, pitch, width, height int, rotation uint32) *image.R
 		}
 		return dst
 	default:
-		dst := image.NewRGBA(image.Rect(0, 0, width, height))
+		dst := GetRGBA(width, height)
 		for y := 0; y < height; y++ {
 			sRow := src[y*pitch : y*pitch+width*4]
 			dRow := dst.Pix[y*dst.Stride : y*dst.Stride+width*4]
@@ -1147,7 +1166,7 @@ func convertBGRAScaled(src []byte, pitch, srcW, srcH, dstW, dstH int, rotation u
 	if rotation != dxgiModeRotationIdentity && rotation != 0 {
 		return nil
 	}
-	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	dst := GetRGBA(dstW, dstH)
 	xOff := make([]int, dstW)
 	for x := 0; x < dstW; x++ {
 		xOff[x] = (x * srcW / dstW) * 4
